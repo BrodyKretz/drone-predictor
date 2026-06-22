@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# Env / secrets
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Data (large / generated — track manifests + config, not raw assets)
+data/audio/
+data/images/
+data/video/
+data/public/
+*.wav
+*.mp4
+*.parquet
+!config/*.parquet
