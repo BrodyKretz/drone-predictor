@@ -26,19 +26,25 @@ the interval — it does not invent a number.
 
 ## Status
 
-🚧 Scaffolding. Build order follows the phased plan:
+**Working sound + verbal → calibrated distributions pipeline.** Phases 0–4 are
+complete and tested; image/video/calibration are scaffolded with the
+self-contained logic implemented and the external-data/API parts honestly
+stubbed. See **[`PLAN.md`](PLAN.md)** for live phase status and next steps, and
+**[`docs/SPEC.md`](docs/SPEC.md)** for the full spec.
 
-0. Scaffold — repo, types (`Distribution` + pydantic models), config, manifest
-1. Forward simulator (the physics test oracle — built first)
-2. Audio → RPM
-3. Physics core + priors + verbal
-4. Fusion skeleton
-5. Image module (VLM extraction)
-6. Video module (tracking, coast-down mass)
-7. Calibration + eval harness + hardening
+```bash
+python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
+./.venv/bin/python scripts/make_demo_sample.py
+./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
+./.venv/bin/pytest tests/ -q
+```
 
-See the project spec for the full physics reference, module specs, and
-acceptance criteria.
+| phase | status |
+|---|---|
+| 0 Scaffold · 1 Simulator · 2 Audio→RPM · 3 Physics+verbal · 4 Fusion | ✅ done + tested |
+| 5 Image (geometry + VLM parser done; live VLM call stubbed) | 🟡 partial |
+| 6 Video (maneuver seg + coast-down mass done; pixel tracking stubbed) | 🟡 partial |
+| 7 Calibration (conformal done; needs golden set for fit + metric table) | 🟡 partial |
 
 ## Stack
 

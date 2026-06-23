@@ -26,11 +26,13 @@ htmlcov/
 .vscode/
 .idea/
 
-# Data (large / generated — track manifests + config, not raw assets)
+# Data (large / generated — track manifests + config + provenance, not raw assets)
 data/audio/
 data/images/
 data/video/
-data/public/
+data/demo/
+data/public/*
+!data/public/SOURCES.md
 *.wav
 *.mp4
 *.parquet
