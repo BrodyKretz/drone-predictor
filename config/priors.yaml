@@ -1,0 +1,45 @@
+version: 1
+
+air_density_kg_m3: 1.225
+gravity_m_s2: 9.80665
+
+motor_esc_efficiency: { low: 0.70, high: 0.85 }
+
+battery_energy_density_wh_kg:
+  lipo: { low: 150, high: 250 }
+  liion: { low: 200, high: 270 }
+
+# Bluff-body-ish multirotor frame. Wide on purpose.
+drag_coefficient: { low: 0.6, high: 1.2 }
+
+# Pitch-to-diameter ratio bands by class (pitch is rarely observed directly).
+pitch_to_diameter_by_class:
+  racing: { low: 0.45, high: 0.75 }
+  cinematic: { low: 0.30, high: 0.50 }
+  survey: { low: 0.30, high: 0.45 }
+  unknown: { low: 0.25, high: 0.80 }
+
+# Battery mass as a fraction of all-up hover mass, by class.
+battery_mass_fraction_by_class:
+  racing: { low: 0.12, high: 0.22 }
+  cinematic: { low: 0.22, high: 0.35 }
+  survey: { low: 0.35, high: 0.50 }
+  unknown: { low: 0.12, high: 0.50 }
+
+# Thrust/power coefficient priors keyed by prop class. These are coarse
+# fallbacks used until config/prop_db.parquet is populated from UIUC/APC data
+# (see scripts/ingest_uiuc.py). C_T and C_P are dimensionless, defined with
+# n in rev/s, rho in kg/m^3, D in m: T = C_T * rho * n^2 * D^4.
+prop_coefficient_fallback:
+  c_t: { low: 0.08, high: 0.14 }
+  c_p: { low: 0.04, high: 0.08 }
+
+# Component mass (everything except battery and payload) as a function of prop
+# diameter in inches. Filled from golden set + manufacturer data. Each entry is
+# a mass band in kg. Empty until golden data exists; fusion falls back to the
+# class-based residual with a wide interval.
+component_mass_by_prop_inch: {}
+
+# Per-motor RPM spread (motors run slightly offset for control authority),
+# expressed as a fraction of mean RPM.
+per_motor_rpm_spread_fraction: { low: 0.0, high: 0.03 }

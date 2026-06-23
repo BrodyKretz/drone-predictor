@@ -1,0 +1,36 @@
+version: 1
+
+# Drone class definitions with prior bands used by the fusion layer when class
+# is uncertain. Ranges are deliberately wide; image/video evidence sharpens them.
+classes:
+  racing:
+    description: "Small, high-T/W FPV/racing quads. Short endurance, high disk loading."
+    prop_diameter_inch: { low: 4.0, high: 6.0 }
+    num_motors: [4]
+    all_up_mass_kg: { low: 0.25, high: 0.9 }
+    thrust_to_weight: { low: 4.0, high: 12.0 }
+    disk_loading_n_m2: { low: 120, high: 400 }
+
+  cinematic:
+    description: "Camera/cinewhoop and prosumer quads. Moderate endurance, gimbal payload."
+    prop_diameter_inch: { low: 6.0, high: 15.0 }
+    num_motors: [4, 6]
+    all_up_mass_kg: { low: 0.5, high: 4.0 }
+    thrust_to_weight: { low: 2.0, high: 4.0 }
+    disk_loading_n_m2: { low: 40, high: 150 }
+
+  survey:
+    description: "Mapping/endurance platforms. Large props, low disk loading, long flight."
+    prop_diameter_inch: { low: 13.0, high: 30.0 }
+    num_motors: [4, 6, 8]
+    all_up_mass_kg: { low: 1.5, high: 25.0 }
+    thrust_to_weight: { low: 1.8, high: 3.0 }
+    disk_loading_n_m2: { low: 20, high: 80 }
+
+  unknown:
+    description: "Fallback when no class evidence is available."
+    prop_diameter_inch: { low: 3.0, high: 30.0 }
+    num_motors: [3, 4, 6, 8]
+    all_up_mass_kg: { low: 0.2, high: 25.0 }
+    thrust_to_weight: { low: 1.5, high: 12.0 }
+    disk_loading_n_m2: { low: 20, high: 400 }
