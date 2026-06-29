@@ -36,12 +36,15 @@ result). See **[`PLAN.md`](PLAN.md)** for live phase status and next steps, and
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q
+./.venv/bin/pytest tests/ -q                      # 83 tests
+
+./.venv/bin/pip install -e ".[serve]" && ./.venv/bin/augur serve   # HTTP API on :8000
 ```
 
 | phase | status |
 |---|---|
 | 0 Scaffold · 1 Simulator · 2 Audio→RPM · 3 Physics+verbal · 4 Fusion | ✅ done + tested |
+| CLI · HTTP API (`/predict`, `/health`) · property-based round-trip suite | ✅ done + tested |
 | 5 Image (geometry + VLM parser done; live VLM call stubbed) | 🟡 partial |
 | 6 Video (maneuver seg + coast-down mass done; pixel tracking stubbed) | 🟡 partial |
 | 7 Calibration (conformal done; needs golden set for fit + metric table) | 🟡 partial |
