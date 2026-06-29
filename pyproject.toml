@@ -23,7 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 audio = ["librosa>=0.10"]
 vision = ["opencv-python>=4.8", "norfair>=2.2", "anthropic>=0.40"]
-serve = ["fastapi>=0.110", "uvicorn>=0.27"]
+serve = ["fastapi>=0.110", "uvicorn>=0.27", "python-multipart>=0.0.9"]
 viz = ["matplotlib>=3.8"]
 dev = [
     "pytest>=8.0",

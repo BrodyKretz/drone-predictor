@@ -42,6 +42,21 @@ def predict(
     typer.echo(render(report))
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Bind address"),
+    port: int = typer.Option(8000, help="Port"),
+):
+    """Run the HTTP API (requires the 'serve' extra)."""
+    try:
+        import uvicorn
+    except ImportError:
+        typer.echo("serve needs the 'serve' extra: pip install -e '.[serve]'", err=True)
+        raise typer.Exit(code=1) from None
+
+    uvicorn.run("augur.api:app", host=host, port=port)
+
+
 def main():
     app()
 

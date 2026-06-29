@@ -3,23 +3,28 @@
 Living status doc. Full spec: [`docs/SPEC.md`](docs/SPEC.md). Build agreements:
 spec §0. **Update the status column whenever a phase advances.**
 
-_Last updated: 2026-06-23_
+_Last updated: 2026-06-28_
 
 ## Where this stands right now
 
 A working, tested **sound + verbal → calibrated distributions** pipeline exists
-end-to-end (Phases 0–4 + the testable physics from later phases). Image/video/
-calibration are scaffolded with honest stubs and tested where the logic is
-self-contained. The two true blockers are external-data / API dependent (see
-"Blocked on you" below).
+end-to-end (Phases 0–4 + the testable physics from later phases), exposed via both
+a CLI and a FastAPI endpoint, with a property-based round-trip suite over the
+physics and audio recovery. Image/video/calibration are scaffolded with honest
+stubs and tested where the logic is self-contained. The true blockers are
+external-data / API dependent (see "Blocked on you" below). 83 tests pass.
 
 Run it:
 ```bash
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q          # 67 tests
+./.venv/bin/pytest tests/ -q          # 83 tests
 ```
+
+The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
+`./.venv/bin/augur serve` (POST multipart audio/verbal to `/predict`; `/health`
+for a liveness check). Without the extra the API tests skip; the rest still run.
 
 ## Phase status
 
@@ -59,7 +64,16 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
   factor; corrects overconfident intervals to nominal coverage on a holdout.
 - **Manifest** (`data_manifest.py`): schema + round-trip + drone-level leakage
   guard.
-- **CLI** (`augur predict`, `augur version`), report renderer, synthetic data gen.
+- **CLI** (`augur predict`, `augur version`, `augur serve`), report renderer,
+  synthetic data gen.
+- **HTTP API** (`api.py`): FastAPI `/predict` (multipart audio + verbal) and
+  `/health`. Core logic is a framework-free helper (`predict_from_uploads`) so it
+  unit-tests without FastAPI; HTTP routes tested via TestClient when the serve
+  extra is present.
+- **Property-based round-trip** (`tests/property/`): Hypothesis sweeps over the
+  physics identities (BPF↔RPM, C_T-cancelling thrust ratio, hover force balance,
+  disk loading, frame geometry, endurance monotonicity) and audio RPM recovery
+  across the blade-pass band.
 
 ## Design note worth remembering
 
@@ -93,14 +107,10 @@ honest interpretation of the "confidence ladder."
    power/mass interval; no hardware needed, just download + license check).
 2. Start collecting the golden set; capture thrust-stand sweeps first.
 3. Wire the live VLM call once a model is chosen (Phase 5 completion).
-4. Build the FastAPI endpoint (`api.py`) — CLI exists; API is spec'd but unbuilt.
-5. Property-based Hypothesis round-trip sweep over the full spec space (spec §9).
-6. Once golden `calib`/`test` exist: fit conformal, produce reliability diagrams
+4. Once golden `calib`/`test` exist: fit conformal, produce reliability diagrams
    and the §10 metric table (Phase 7).
 
 ## Not yet built
 
-- `api.py` (FastAPI endpoint) — spec'd, not implemented (CLI covers local use).
-- Hypothesis property-based round-trip sweep (have concrete round-trip tests).
 - `config/prop_db.parquet` (using fallback bands).
 - Reliability diagrams / full §10 metric table (needs golden set).
