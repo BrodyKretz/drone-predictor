@@ -3,9 +3,9 @@
 **Augur — Multimodal Drone Property Inference** (working name)
 
 Predicts a drone's physical and performance properties from any combination of
-four inputs — **sound, verbal spec, image, video** — and gets strictly more
-confident as more inputs are supplied. Every output is a *calibrated
-distribution*, never a point estimate.
+four inputs — **sound, verbal spec, image, video**. Every output is a *calibrated
+distribution*, never a point estimate, and the model gets strictly more confident
+as you supply more inputs.
 
 ## What it estimates
 
@@ -16,20 +16,20 @@ feature inventory, and flight endurance.
 
 ## Core principle
 
-Each input is an independent constraint. Inputs are fused as likelihoods so that
-adding an input can only narrow the posterior, never widen it (given consistent
-evidence). Per prediction, the system reports *which inputs tightened which
-variables*.
+Each input is an independent constraint. Inputs are fused as likelihoods, so
+adding one can only narrow the posterior, never widen it (given consistent
+evidence). Every prediction reports *which inputs tightened which variables*.
 
-When a quantity is genuinely unknowable from the given inputs, the system widens
-the interval — it does not invent a number.
+When a quantity is genuinely unknowable from the given inputs, the interval stays
+wide — the system does not invent a number to fill the gap.
 
 ## Status
 
-**Working sound + verbal → calibrated distributions pipeline.** Phases 0–4 are
-complete and tested; image/video/calibration are scaffolded with the
-self-contained logic implemented and the external-data/API parts honestly
-stubbed. See **[`PLAN.md`](PLAN.md)** for live phase status and next steps, and
+**The sound + verbal → calibrated-distributions pipeline works end to end.**
+Phases 0–4 are complete and tested (67 tests). Image, video, and calibration are
+scaffolded: the self-contained logic is implemented, and the parts that need
+external data or a live API are honestly stubbed (they raise rather than fake a
+result). See **[`PLAN.md`](PLAN.md)** for live phase status and next steps, and
 **[`docs/SPEC.md`](docs/SPEC.md)** for the full spec.
 
 ```bash
