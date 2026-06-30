@@ -12,7 +12,7 @@ end-to-end (Phases 0–4 + the testable physics from later phases), exposed via 
 a CLI and a FastAPI endpoint, with a property-based round-trip suite over the
 physics and audio recovery. Image/video/calibration are scaffolded with honest
 stubs and tested where the logic is self-contained. The true blockers are
-external-data / API dependent (see "Blocked on you" below). 83 tests pass.
+external-data / API dependent (see "Blocked on you" below). 89 tests pass.
 
 Run it:
 ```bash
@@ -70,6 +70,11 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   `/health`. Core logic is a framework-free helper (`predict_from_uploads`) so it
   unit-tests without FastAPI; HTTP routes tested via TestClient when the serve
   extra is present.
+- **Prop-DB ingest** (`prop_ingest.py` + `scripts/ingest_uiuc.py`): parses UIUC/APC
+  static-test files (`<maker>_<D>x<P>_static_*.txt`) into one representative
+  (C_T, C_P) per prop → `config/prop_db.parquet`, which `prop_db` then prefers
+  over the fallback bands. Validated against format fixtures; **awaiting the real
+  data download + license check (see "Blocked on you" #4)**.
 - **Property-based round-trip** (`tests/property/`): Hypothesis sweeps over the
   physics identities (BPF↔RPM, C_T-cancelling thrust ratio, hover force balance,
   disk loading, frame geometry, endurance monotonicity) and audio RPM recovery
@@ -96,15 +101,19 @@ honest interpretation of the "confidence ladder."
 3. **Video tracking** (`video/track.py::track_drone`): needs real footage +
    flight-log truth + the `vision` extra (opencv+norfair). Downstream maneuver/
    mass logic is done and tested on synthetic series.
-4. **Public data ingest** (`scripts/ingest_*.py`): UIUC/APC prop data (build
-   `config/prop_db.parquet` — until then C_T/C_P use wide config fallback bands),
-   Betaflight blackbox, DJI logs. Stubs document the target schema. Verify
-   licenses; log provenance in `data/public/SOURCES.md`.
+4. **Public data download** (UIUC/APC prop data): the *ingest pipeline is built and
+   tested* (`prop_ingest.py` + `scripts/ingest_uiuc.py`). What remains is a human
+   call: download the UIUC data, verify its license permits use/redistribution in
+   this MIT repo, log provenance in `data/public/SOURCES.md`, then run
+   `python scripts/ingest_uiuc.py --src <dir>` to build `config/prop_db.parquet`.
+   Until then C_T/C_P use the wide config fallback bands. (Betaflight blackbox /
+   DJI logs remain stubs documenting their target schema.)
 
 ## Next steps (in order)
 
-1. Ingest UIUC/APC prop data → `config/prop_db.parquet` (tightens every thrust/
-   power/mass interval; no hardware needed, just download + license check).
+1. Download UIUC/APC prop data + license check, then run `scripts/ingest_uiuc.py`
+   to build `config/prop_db.parquet` (the ingest code is done; this tightens every
+   thrust/power/mass interval). No hardware — just the download + license call.
 2. Start collecting the golden set; capture thrust-stand sweeps first.
 3. Wire the live VLM call once a model is chosen (Phase 5 completion).
 4. Once golden `calib`/`test` exist: fit conformal, produce reliability diagrams
@@ -112,5 +121,5 @@ honest interpretation of the "confidence ladder."
 
 ## Not yet built
 
-- `config/prop_db.parquet` (using fallback bands).
+- `config/prop_db.parquet` (ingest pipeline ready; data not yet downloaded).
 - Reliability diagrams / full §10 metric table (needs golden set).

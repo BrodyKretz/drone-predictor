@@ -1,32 +1,35 @@
-"""Build config/prop_db.parquet from UIUC / APC propeller data.
+"""CLI: build config/prop_db.parquet from a local UIUC/APC prop-data directory.
 
-STATUS: stub. Needs the raw data downloaded + license verified (record provenance
-in data/public/SOURCES.md before ingest).
+Download the data and verify its license first; record provenance in
+data/public/SOURCES.md. Parsing logic and the expected file format live in
+augur.prop_ingest.
 
-Target output schema (consumed by augur.physics.prop_db):
-    diameter_inch: float
-    pitch_inch: float
-    c_t_static: float   # thrust coefficient near static/zero advance ratio
-    c_p_static: float   # power coefficient likewise
-    source: str         # "UIUC" | "APC"
-
-The UIUC Propeller Data Site publishes per-prop performance files (C_T, C_P, eta
-vs advance ratio J). For each prop, take the J->0 (static) end, or the lowest-J
-measured point, as c_t_static / c_p_static. APC performance files give similar
-curves. Once written, prop_db.sample_coefficients() automatically prefers this
-over the config fallback bands.
+Usage: python scripts/ingest_uiuc.py --src path/to/uiuc_data [--source UIUC]
 """
 
 from __future__ import annotations
 
+import argparse
+from pathlib import Path
+
+from augur.prop_ingest import build_prop_db, save_prop_db
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUT = ROOT / "config" / "prop_db.parquet"
+
 
 def main():
-    raise NotImplementedError(
-        "ingest_uiuc is a stub. Download UIUC/APC prop data, verify licenses, "
-        "record provenance in data/public/SOURCES.md, then parse each prop's "
-        "low-advance-ratio C_T/C_P into config/prop_db.parquet with columns "
-        "[diameter_inch, pitch_inch, c_t_static, c_p_static, source]."
-    )
+    ap = argparse.ArgumentParser(description="Build prop_db.parquet from UIUC/APC data.")
+    ap.add_argument("--src", required=True, help="Directory of static-test files")
+    ap.add_argument("--out", default=str(DEFAULT_OUT), help="Output parquet path")
+    ap.add_argument("--source", default="UIUC", help="Provenance label for these props")
+    args = ap.parse_args()
+
+    df = build_prop_db(args.src, source=args.source)
+    if df.empty:
+        raise SystemExit(f"No parseable prop files found under {args.src}")
+    save_prop_db(df, args.out)
+    print(f"wrote {len(df)} props to {args.out}")
 
 
 if __name__ == "__main__":
