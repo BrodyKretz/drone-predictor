@@ -57,11 +57,21 @@ def create_app():
     """Build the FastAPI app. Imported lazily so the package works without the
     `serve` extra installed."""
     from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+    from fastapi.middleware.cors import CORSMiddleware
 
     app = FastAPI(
         title="Augur",
         description="Multimodal drone property inference — calibrated distributions.",
         version=__version__,
+    )
+
+    # Dev-permissive CORS so the local web UI (Vite, another port) can call the API.
+    # Tighten allow_origins before any non-local deployment.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @app.get("/health")

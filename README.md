@@ -41,6 +41,10 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/pip install -e ".[serve]" && ./.venv/bin/augur serve   # HTTP API on :8000
 ```
 
+A web UI (Vite + React) lives in [`web/`](web/) — upload audio + a verbal spec and
+see the distributions as interval bars with confidence colors and per-input
+attribution. Run `augur serve`, then `npm install && npm run dev` in `web/`.
+
 | phase | status |
 |---|---|
 | 0 Scaffold · 1 Simulator · 2 Audio→RPM · 3 Physics+verbal · 4 Fusion | ✅ done + tested |

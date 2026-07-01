@@ -76,9 +76,12 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
 - **CLI** (`augur predict`, `augur version`, `augur serve`), report renderer,
   synthetic data gen.
 - **HTTP API** (`api.py`): FastAPI `/predict` (multipart audio + verbal) and
-  `/health`. Core logic is a framework-free helper (`predict_from_uploads`) so it
-  unit-tests without FastAPI; HTTP routes tested via TestClient when the serve
-  extra is present.
+  `/health`, dev-permissive CORS for the web UI. Core logic is a framework-free
+  helper (`predict_from_uploads`) so it unit-tests without FastAPI; HTTP routes
+  tested via TestClient when the serve extra is present.
+- **Web UI** (`web/`, Vite + React): upload audio + verbal → interval bars with
+  confidence colors + per-input attribution. Build verified (`npm run build`) and
+  components server-rendered against a live API report; not covered by pytest.
 - **Prop-DB ingest** (`prop_ingest.py` + `scripts/ingest_uiuc.py`): parses UIUC/APC
   static-test files (`<maker>_<D>x<P>_static_*.txt`) into one representative
   (C_T, C_P) per prop → `config/prop_db.parquet`, which `prop_db` then prefers
