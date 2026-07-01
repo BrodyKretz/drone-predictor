@@ -1,10 +1,10 @@
 // Talks to the Augur FastAPI backend. Override the base URL with VITE_API_URL.
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-export async function predict({ audio, verbal, samples, seed }) {
+export async function predict({ audio, verbalJson, samples, seed }) {
   const form = new FormData();
   if (audio) form.append("audio", audio);
-  if (verbal) form.append("verbal", verbal);
+  if (verbalJson) form.append("verbal_json", verbalJson);
   if (samples) form.append("samples", String(samples));
   if (seed !== undefined) form.append("seed", String(seed));
 

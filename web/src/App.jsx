@@ -1,10 +1,55 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { health, predict } from "./api.js";
 import Report from "./components/Report.jsx";
 
+// The verbal spec as a set of discrete dropdowns. Every field is optional — "Any"
+// contributes no constraint, matching the backend VerbalSpec (all fields nullable).
+const SPEC_FIELDS = [
+  {
+    key: "drone_class",
+    label: "Drone class",
+    type: "string",
+    options: [["Any", ""], ["Racing", "racing"], ["Cinematic", "cinematic"], ["Survey", "survey"]],
+  },
+  {
+    key: "num_motors",
+    label: "Motors",
+    type: "int",
+    options: [["Any", ""], ["4", "4"], ["6", "6"], ["8", "8"]],
+  },
+  {
+    key: "blade_count",
+    label: "Blades / prop",
+    type: "int",
+    options: [["Any", ""], ["2", "2"], ["3", "3"]],
+  },
+  {
+    key: "prop_diameter_inch",
+    label: "Prop diameter",
+    type: "float",
+    options: [["Any", ""], ['3"', "3"], ['5"', "5"], ['7"', "7"], ['10"', "10"], ['13"', "13"], ['15"', "15"], ['18"', "18"], ['22"', "22"]],
+  },
+  {
+    key: "cell_count",
+    label: "Battery cells",
+    type: "int",
+    options: [["Any", ""], ["3S", "3"], ["4S", "4"], ["6S", "6"]],
+  },
+];
+
+function buildSpec(selections) {
+  const spec = {};
+  for (const field of SPEC_FIELDS) {
+    const raw = selections[field.key];
+    if (raw === undefined || raw === "") continue;
+    spec[field.key] = field.type === "string" ? raw : Number(raw);
+  }
+  return spec;
+}
+
 export default function App() {
   const [audio, setAudio] = useState(null);
-  const [verbal, setVerbal] = useState(null);
+  const [selections, setSelections] = useState({});
   const [samples, setSamples] = useState(8000);
   const [seed, setSeed] = useState(0);
 
@@ -14,21 +59,27 @@ export default function App() {
   const [backendUp, setBackendUp] = useState(null);
 
   useEffect(() => {
-    health()
-      .then(() => setBackendUp(true))
-      .catch(() => setBackendUp(false));
+    health().then(() => setBackendUp(true)).catch(() => setBackendUp(false));
   }, []);
+
+  const spec = useMemo(() => buildSpec(selections), [selections]);
+  const hasSpec = Object.keys(spec).length > 0;
 
   async function onSubmit(e) {
     e.preventDefault();
     setError(null);
-    if (!audio && !verbal) {
-      setError("Provide at least an audio clip or a verbal spec.");
+    if (!audio && !hasSpec) {
+      setError("Pick at least an audio clip or one spec field.");
       return;
     }
     setLoading(true);
     try {
-      const result = await predict({ audio, verbal, samples, seed });
+      const result = await predict({
+        audio,
+        verbalJson: hasSpec ? JSON.stringify(spec) : null,
+        samples,
+        seed,
+      });
       setReport(result);
     } catch (err) {
       setError(err.message);
@@ -62,11 +113,24 @@ export default function App() {
             {audio && <span className="file-name">{audio.name}</span>}
           </label>
 
-          <label>
-            Verbal spec (.json)
-            <input type="file" accept=".json,application/json" onChange={(e) => setVerbal(e.target.files[0] || null)} />
-            {verbal && <span className="file-name">{verbal.name}</span>}
-          </label>
+          <fieldset className="spec">
+            <legend>Verbal spec</legend>
+            {SPEC_FIELDS.map((field) => (
+              <label key={field.key} className="spec-field">
+                {field.label}
+                <select
+                  value={selections[field.key] ?? ""}
+                  onChange={(e) => setSelections((s) => ({ ...s, [field.key]: e.target.value }))}
+                >
+                  {field.options.map(([text, value]) => (
+                    <option key={value} value={value}>
+                      {text}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </fieldset>
 
           <div className="row">
             <label>
@@ -86,15 +150,15 @@ export default function App() {
           {error && <p className="error">{error}</p>}
 
           <p className="hint">
-            Demo files live in <code>data/demo/</code> — generate them with
-            <br />
-            <code>python scripts/make_demo_sample.py</code>
+            Demo audio: generate with <code>python scripts/make_demo_sample.py</code> →
+            {" "}<code>data/demo/drone.wav</code>. Leave the spec on "Any" to see the
+            audio-only estimate widen.
           </p>
         </form>
 
         <div className="panel results">
           <h2>Prediction</h2>
-          {!report && !loading && <p className="empty">Upload inputs and hit Predict.</p>}
+          {!report && !loading && <p className="empty">Choose inputs and hit Predict.</p>}
           {report && <Report report={report} />}
         </div>
       </div>
