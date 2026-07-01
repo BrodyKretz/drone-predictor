@@ -1,0 +1,38 @@
+[
+  {
+    "id": "racing",
+    "label": "Racing quad (5\", 4 motors)",
+    "file": "racing.wav",
+    "spec": {
+      "drone_class": "racing",
+      "num_motors": 4,
+      "blade_count": 2,
+      "prop_diameter_inch": 5.0
+    },
+    "true_rpm": 11768
+  },
+  {
+    "id": "cinematic",
+    "label": "Cinematic quad (9\", 4 motors)",
+    "file": "cinematic.wav",
+    "spec": {
+      "drone_class": "cinematic",
+      "num_motors": 4,
+      "blade_count": 2,
+      "prop_diameter_inch": 9.0
+    },
+    "true_rpm": 5365
+  },
+  {
+    "id": "survey",
+    "label": "Survey hex (15\", 6 motors)",
+    "file": "survey.wav",
+    "spec": {
+      "drone_class": "survey",
+      "num_motors": 6,
+      "blade_count": 2,
+      "prop_diameter_inch": 15.0
+    },
+    "true_rpm": 2578
+  }
+]

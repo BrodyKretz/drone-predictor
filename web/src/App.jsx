@@ -27,7 +27,7 @@ const SPEC_FIELDS = [
     key: "prop_diameter_inch",
     label: "Prop diameter",
     type: "float",
-    options: [["Any", ""], ['3"', "3"], ['5"', "5"], ['7"', "7"], ['10"', "10"], ['13"', "13"], ['15"', "15"], ['18"', "18"], ['22"', "22"]],
+    options: [["Any", ""], ['3"', "3"], ['5"', "5"], ['7"', "7"], ['9"', "9"], ['10"', "10"], ['13"', "13"], ['15"', "15"], ['18"', "18"], ['22"', "22"]],
   },
   {
     key: "cell_count",
@@ -57,10 +57,34 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [backendUp, setBackendUp] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [activeTemplate, setActiveTemplate] = useState(null);
 
   useEffect(() => {
     health().then(() => setBackendUp(true)).catch(() => setBackendUp(false));
+    fetch("/templates/templates.json")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
   }, []);
+
+  async function loadTemplate(t) {
+    setError(null);
+    try {
+      const res = await fetch(`/templates/${t.file}`);
+      const blob = await res.blob();
+      setAudio(new File([blob], t.file, { type: "audio/wav" }));
+      setSelections({
+        drone_class: t.spec.drone_class ?? "",
+        num_motors: String(t.spec.num_motors ?? ""),
+        blade_count: String(t.spec.blade_count ?? ""),
+        prop_diameter_inch: String(t.spec.prop_diameter_inch ?? ""),
+      });
+      setActiveTemplate(t.id);
+    } catch {
+      setError(`Could not load template ${t.id}.`);
+    }
+  }
 
   const spec = useMemo(() => buildSpec(selections), [selections]);
   const hasSpec = Object.keys(spec).length > 0;
@@ -106,6 +130,25 @@ export default function App() {
       <div className="layout">
         <form className="panel controls" onSubmit={onSubmit}>
           <h2>Inputs</h2>
+
+          {templates.length > 0 && (
+            <div className="templates">
+              <span className="templates-label">Load a demo</span>
+              <div className="template-buttons">
+                {templates.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`template-btn ${activeTemplate === t.id ? "active" : ""}`}
+                    onClick={() => loadTemplate(t)}
+                    title={`true RPM ${t.true_rpm}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <label>
             Audio (.wav)

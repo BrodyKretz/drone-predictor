@@ -37,3 +37,5 @@ data/public/*
 *.mp4
 *.parquet
 !config/*.parquet
+# Bundled synthetic demo clips for the web UI (our own generated data).
+!web/public/templates/*.wav
