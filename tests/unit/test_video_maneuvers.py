@@ -52,6 +52,7 @@ def test_segment_rejects_mismatched_lengths():
         maneuvers.segment(np.arange(5), np.arange(4), np.arange(5))
 
 
-def test_track_not_wired():
-    with pytest.raises(NotImplementedError):
+def test_track_requires_scale():
+    # Tracking is wired now; without a metric scale it fails fast (see test_video_track).
+    with pytest.raises(ValueError):
         track.track_drone("clip.mp4")
