@@ -31,6 +31,7 @@ data/audio/
 data/images/
 data/video/
 data/demo/
+data/external/
 data/public/*
 !data/public/SOURCES.md
 *.wav
