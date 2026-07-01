@@ -1,25 +1,42 @@
 """VLM-based extraction of structured facts from a still image.
 
-STATUS: the live model call is intentionally not wired. It needs (a) an Anthropic
-API key in the environment and (b) the *current* model id + tool-use setup, which
-per the project spec must be checked against live docs (product-self-knowledge /
-claude-api skill) rather than hardcoded from memory. `extract_from_image` raises
-until that wiring is done.
+The live model call (`extract_from_image`) is wired to the Anthropic Messages
+API. It needs an API key in the environment (`ANTHROPIC_API_KEY`) and the
+`vision` extra installed (`pip install -e ".[vision]"`). The model id is
+overridable via the `model` argument or `AUGUR_VLM_MODEL`; the default is a
+current vision-capable Claude and should be reviewed against live docs.
 
-What IS implemented and tested here is `parse_vlm_response` — strict, defensive
-JSON parsing of the model output, including malformed responses — and the
-`ImageExtraction` schema the rest of the system consumes. Wiring the call later
-is then a thin, low-risk layer on top of a tested parser.
+The request building, image encoding, and response-text extraction are factored
+into small pure helpers, and the client is injectable, so the whole path is
+unit-tested with a fake client — no key or network needed. Model output flows
+through `parse_vlm_response` (strict, defensive JSON parsing) into the
+`ImageExtraction` schema the rest of the system consumes.
 """
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
+from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
 from augur.fusion.observations import Observation
+
+# Default vision model. Overridable via the `model` arg or AUGUR_VLM_MODEL; the
+# spec calls for confirming the current id against live docs rather than trusting
+# this constant blindly.
+DEFAULT_VLM_MODEL = "claude-sonnet-4-6"
+
+_MEDIA_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
 
 
 class BatteryInfo(BaseModel):
@@ -107,10 +124,60 @@ def extraction_to_observations(ext: ImageExtraction, cell_voltage_nominal: float
     return obs
 
 
-def extract_from_image(image_path: str, model: str | None = None) -> ImageExtraction:
-    """Call the VLM on an image. NOT YET WIRED — see module docstring."""
-    raise NotImplementedError(
-        "VLM image extraction is not wired yet. Wire the Anthropic call here using "
-        "the current model id + tool-use setup from live docs (claude-api skill), "
-        "then feed the response text through parse_vlm_response()."
+def _media_type(image_path: str | Path) -> str:
+    ext = Path(image_path).suffix.lower()
+    if ext not in _MEDIA_TYPES:
+        raise ValueError(f"unsupported image type {ext!r}; expected one of {sorted(_MEDIA_TYPES)}")
+    return _MEDIA_TYPES[ext]
+
+
+def _encode_image(image_path: str | Path) -> str:
+    return base64.standard_b64encode(Path(image_path).read_bytes()).decode("ascii")
+
+
+def _build_messages(image_b64: str, media_type: str) -> list[dict]:
+    """The Messages-API payload: the image, then the strict-JSON instruction."""
+    return [{
+        "role": "user",
+        "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": media_type,
+                                         "data": image_b64}},
+            {"type": "text", "text": EXTRACTION_PROMPT},
+        ],
+    }]
+
+
+def _response_text(message) -> str:
+    """Concatenate the text blocks of an Anthropic Messages response."""
+    parts = [getattr(block, "text", "") for block in getattr(message, "content", [])]
+    return "\n".join(p for p in parts if p)
+
+
+def _default_client():
+    try:
+        import anthropic
+    except ImportError as e:
+        raise RuntimeError(
+            "VLM extraction needs the 'vision' extra: pip install -e '.[vision]'"
+        ) from e
+    return anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
+
+
+def extract_from_image(image_path: str, model: str | None = None, client=None,
+                       max_tokens: int = 1024) -> ImageExtraction:
+    """Call the VLM on an image and parse the structured extraction.
+
+    `client` is injectable for testing; when omitted, a default Anthropic client
+    is built lazily (requiring the vision extra + API key). The model output is
+    run through `parse_vlm_response`, so a malformed response raises ValueError
+    and callers degrade to contributing no image observations."""
+    media_type = _media_type(image_path)
+    image_b64 = _encode_image(image_path)
+    client = client or _default_client()
+
+    message = client.messages.create(
+        model=model or os.environ.get("AUGUR_VLM_MODEL", DEFAULT_VLM_MODEL),
+        max_tokens=max_tokens,
+        messages=_build_messages(image_b64, media_type),
     )
+    return parse_vlm_response(_response_text(message))

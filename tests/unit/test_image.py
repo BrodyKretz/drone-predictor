@@ -70,6 +70,68 @@ def test_battery_observation_from_label():
     assert wh.value == pytest.approx(22.2, rel=0.01)
 
 
-def test_extract_from_image_not_wired():
-    with pytest.raises(NotImplementedError):
-        extract.extract_from_image("foo.jpg")
+class _FakeBlock:
+    def __init__(self, text):
+        self.text = text
+
+
+class _FakeMessage:
+    def __init__(self, text):
+        self.content = [_FakeBlock(text)]
+
+
+class _FakeClient:
+    """Stands in for anthropic.Anthropic: records the request, returns canned text."""
+    def __init__(self, text):
+        self._text = text
+        self.last_kwargs = None
+
+    class _Messages:
+        def __init__(self, outer):
+            self._outer = outer
+
+        def create(self, **kwargs):
+            self._outer.last_kwargs = kwargs
+            return _FakeMessage(self._outer._text)
+
+    @property
+    def messages(self):
+        return _FakeClient._Messages(self)
+
+
+def test_extract_from_image_wired(tmp_path):
+    img = tmp_path / "drone.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n fake bytes")
+    client = _FakeClient('{"drone_class": "racing", "num_motors": 4}')
+
+    ext = extract.extract_from_image(str(img), client=client)
+    assert ext.drone_class == "racing"
+    assert ext.num_motors == 4
+
+    # The request carried a base64 image with the right media type + the prompt.
+    content = client.last_kwargs["messages"][0]["content"]
+    assert content[0]["source"]["media_type"] == "image/png"
+    assert content[0]["source"]["data"]
+    assert "JSON" in content[1]["text"]
+
+
+def test_extract_from_image_model_override(tmp_path):
+    img = tmp_path / "drone.jpg"
+    img.write_bytes(b"jpeg bytes")
+    client = _FakeClient("{}")
+    extract.extract_from_image(str(img), model="claude-opus-4-8", client=client)
+    assert client.last_kwargs["model"] == "claude-opus-4-8"
+
+
+def test_extract_from_image_rejects_unknown_extension(tmp_path):
+    bad = tmp_path / "drone.tiff"
+    bad.write_bytes(b"x")
+    with pytest.raises(ValueError):
+        extract.extract_from_image(str(bad), client=_FakeClient("{}"))
+
+
+def test_extract_from_image_malformed_response_raises(tmp_path):
+    img = tmp_path / "drone.png"
+    img.write_bytes(b"x")
+    with pytest.raises(ValueError):
+        extract.extract_from_image(str(img), client=_FakeClient("not json at all"))
