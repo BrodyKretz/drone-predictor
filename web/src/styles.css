@@ -109,6 +109,36 @@ header h1 {
   font-size: 0.9rem;
 }
 
+.templates {
+  margin-bottom: 1rem;
+}
+.templates-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+.template-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.template-btn {
+  width: auto;
+  flex: 1 1 auto;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.template-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .spec {
   border: 1px solid var(--border);
   border-radius: 10px;
