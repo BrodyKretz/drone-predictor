@@ -10,16 +10,18 @@ _Last updated: 2026-06-28_
 A working, tested **sound + verbal → calibrated distributions** pipeline exists
 end-to-end (Phases 0–4 + the testable physics from later phases), exposed via both
 a CLI and a FastAPI endpoint, with a property-based round-trip suite over the
-physics and audio recovery. Image/video/calibration are scaffolded with honest
-stubs and tested where the logic is self-contained. The true blockers are
-external-data / API dependent (see "Blocked on you" below). 89 tests pass.
+physics and audio recovery. Image/video/calibration are now implemented and
+tested (VLM call via injected fake client, video tracker on synthetic frames,
+eval harness on synthetic reports) — not stubs. The remaining blockers are purely
+external: data / API key / hardware (see "Blocked on you"). The code is close to
+feature-complete; what's missing is real data. 112 tests pass.
 
 Run it:
 ```bash
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q          # 83 tests
+./.venv/bin/pytest tests/ -q          # 112 tests
 ```
 
 The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
@@ -35,9 +37,9 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
 | 2 | Audio → RPM (`audio/spectral,rpm,hover`) — <2% RPM incl. noisy | ✅ done |
 | 3 | Physics core + priors + verbal + MC uncertainty + round-trip | ✅ done |
 | 4 | Fusion skeleton (`fusion/observations,posterior`) + per-modality attribution + monotonicity | ✅ done |
-| 5 | Image module: VLM extraction + geometry | 🟡 partial — geometry done+tested; VLM JSON parser done+tested; **live VLM call stubbed** |
-| 6 | Video module: tracking + maneuvers + coast-down mass | 🟡 partial — maneuver segmentation + drag mass done+tested; **pixel→velocity tracking stubbed** |
-| 7 | Calibration + eval harness + hardening | 🟡 partial — conformal calibrator done+tested; **needs golden set to fit + reliability diagrams + full metric table** |
+| 5 | Image module: VLM extraction + geometry | 🟡 near-complete — geometry + JSON parser + **live VLM call all done+tested (fake-client)**; needs one real API run to confirm |
+| 6 | Video module: tracking + maneuvers + coast-down mass | 🟡 near-complete — segmentation + drag mass + **pixel→velocity tracking done+tested**; needs real footage to validate end-to-end |
+| 7 | Calibration + eval harness + hardening | 🟡 partial — conformal calibrator + **eval harness (splits/metrics/fit) done+tested**; needs the golden set to actually fit + produce the §10 table |
 
 ## What's implemented and verified
 
@@ -56,10 +58,17 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   round-tripped against the forward drag relation.
 - **Image geometry** (`image/geometry.py`): pixel→metric with scale; wide
   ratio-only prior when scale absent.
-- **VLM parsing** (`image/extract.py`): defensive JSON parse (bare/fenced/prose/
-  malformed) + observation builder for the direct battery path.
+- **Image VLM** (`image/extract.py`): defensive JSON parse + observation builder,
+  and the live Anthropic Messages call (`extract_from_image`) with an injectable
+  client — tested via a fake client (no key/network).
+- **Video tracking** (`video/track.py`): pixel→metric velocity/tilt kinematics +
+  a numpy blob detector + opencv decode; tested on synthetic frames and a real
+  encode/decode round-trip. Feeds maneuver segmentation.
 - **Maneuver segmentation** (`video/maneuvers.py`): hover/climb/cruise/coast from
   velocity series → coast mass observations.
+- **Eval harness** (`eval.py`): drone-level leakage-free split assignment,
+  §10 metrics (MAPE / coverage / sharpness), and conformal-calibrator fitting
+  from a calib split. Capture protocol in `docs/GOLDEN_SET.md`.
 - **Conformal calibration** (`fusion/calibration.py`): split-conformal width
   factor; corrects overconfident intervals to nominal coverage on a holdout.
 - **Manifest** (`data_manifest.py`): schema + round-trip + drone-level leakage
@@ -95,12 +104,16 @@ honest interpretation of the "confidence ladder."
    all four modalities + measured truth. Highest-value single item: a thrust-stand
    sweep (RCbenchmark + tachometer) — it calibrates C_T/C_P and validates RPM.
    Without it, calibration (Phase 7) and the §10 metric table cannot be produced.
-2. **Live VLM call** (`image/extract.py::extract_from_image`): needs an Anthropic
-   API key + the *current* model id / tool-use setup from live docs (claude-api
-   skill). Parser + schema already done; wiring is a thin layer.
-3. **Video tracking** (`video/track.py::track_drone`): needs real footage +
-   flight-log truth + the `vision` extra (opencv+norfair). Downstream maneuver/
-   mass logic is done and tested on synthetic series.
+   **Capture protocol + landing steps are written up in `docs/GOLDEN_SET.md`; the
+   eval harness (`eval.py`) already consumes it.**
+2. **One real VLM run** (`image/extract.py::extract_from_image`): the call is
+   wired + tested via a fake client. Confirm the default model id against live
+   docs, set `ANTHROPIC_API_KEY`, install `.[vision]`, and run once on a real
+   photo to validate.
+3. **Real footage for video tracking** (`video/track.py::track_drone`): the
+   tracker is implemented + tested on synthetic frames and an opencv round-trip.
+   Validating end-to-end needs real footage + flight-log truth + the `vision`
+   extra.
 4. **Public data download** (UIUC/APC prop data): the *ingest pipeline is built and
    tested* (`prop_ingest.py` + `scripts/ingest_uiuc.py`). What remains is a human
    call: download the UIUC data, verify its license permits use/redistribution in
@@ -114,12 +127,17 @@ honest interpretation of the "confidence ladder."
 1. Download UIUC/APC prop data + license check, then run `scripts/ingest_uiuc.py`
    to build `config/prop_db.parquet` (the ingest code is done; this tightens every
    thrust/power/mass interval). No hardware — just the download + license call.
-2. Start collecting the golden set; capture thrust-stand sweeps first.
-3. Wire the live VLM call once a model is chosen (Phase 5 completion).
-4. Once golden `calib`/`test` exist: fit conformal, produce reliability diagrams
-   and the §10 metric table (Phase 7).
+2. Start collecting the golden set per `docs/GOLDEN_SET.md`; thrust-stand sweeps
+   first. This is now the critical path — nearly everything else is code-complete.
+3. One real VLM run to confirm the wired call (set the key, pick the model).
+4. Once golden `calib`/`test` exist: fit conformal (`eval.fit_calibrator`),
+   produce reliability diagrams + the §10 table (`eval.format_metrics_table`).
 
 ## Not yet built
 
 - `config/prop_db.parquet` (ingest pipeline ready; data not yet downloaded).
-- Reliability diagrams / full §10 metric table (needs golden set).
+- Reliability-diagram plots (`viz` extra / matplotlib). The metric table + coverage
+  numbers are coded (`eval.py`); only the plotted diagrams and a real populated
+  §10 table (needs the golden set) remain.
+- Golden-set data itself + a thin `scripts/ingest_golden.py` (the schema, split
+  assignment, and eval it feeds are all built; see `docs/GOLDEN_SET.md`).
