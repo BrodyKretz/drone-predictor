@@ -79,9 +79,15 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   `/health`, dev-permissive CORS for the web UI. Core logic is a framework-free
   helper (`predict_from_uploads`) so it unit-tests without FastAPI; HTTP routes
   tested via TestClient when the serve extra is present.
-- **Web UI** (`web/`, Vite + React): upload audio + verbal → interval bars with
-  confidence colors + per-input attribution. Build verified (`npm run build`) and
-  components server-rendered against a live API report; not covered by pytest.
+- **Web UI** (`web/`, Vite + React): audio upload + verbal-spec dropdowns + one-click
+  synthetic demo templates (racing/cinematic/survey, each recovering true RPM within
+  ~1%) → interval bars with confidence colors + per-input attribution. Build verified
+  (`npm run build`) and components server-rendered against a live API report.
+- **Real-audio validation** (`scripts/validate_real_audio.py`, `docs/REAL_AUDIO.md`):
+  recover RPM from any WAV and score vs. a known true RPM. DREGON is the ideal
+  real dataset (on-board audio + rotor-speed truth) but is **academic-use only —
+  not redistributable**, so it's run locally (gitignored `data/external/`), never
+  committed. DroneAudioset (MIT) is the bundle-able but noisier alternative.
 - **Prop-DB ingest** (`prop_ingest.py` + `scripts/ingest_uiuc.py`): parses UIUC/APC
   static-test files (`<maker>_<D>x<P>_static_*.txt`) into one representative
   (C_T, C_P) per prop → `config/prop_db.parquet`, which `prop_db` then prefers
