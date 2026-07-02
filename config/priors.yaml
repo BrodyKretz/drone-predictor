@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 air_density_kg_m3: 1.225
 gravity_m_s2: 9.80665
@@ -17,6 +17,7 @@ pitch_to_diameter_by_class:
   racing: { low: 0.45, high: 0.75 }
   cinematic: { low: 0.30, high: 0.50 }
   survey: { low: 0.30, high: 0.45 }
+  military: { low: 0.35, high: 0.65 }
   unknown: { low: 0.25, high: 0.80 }
 
 # Battery mass as a fraction of all-up hover mass, by class.
@@ -24,6 +25,7 @@ battery_mass_fraction_by_class:
   racing: { low: 0.12, high: 0.22 }
   cinematic: { low: 0.22, high: 0.35 }
   survey: { low: 0.35, high: 0.50 }
+  military: { low: 0.20, high: 0.40 }
   unknown: { low: 0.12, high: 0.50 }
 
 # Thrust/power coefficient priors keyed by prop class. These are coarse

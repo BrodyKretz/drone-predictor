@@ -34,5 +34,17 @@
       "prop_diameter_inch": 15.0
     },
     "true_rpm": 2578
+  },
+  {
+    "id": "military",
+    "label": "Military ISR quad (13\", 3-blade)",
+    "file": "military.wav",
+    "spec": {
+      "drone_class": "military",
+      "num_motors": 4,
+      "blade_count": 3,
+      "prop_diameter_inch": 13.0
+    },
+    "true_rpm": 3711
   }
 ]

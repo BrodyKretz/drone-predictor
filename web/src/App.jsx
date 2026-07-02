@@ -9,7 +9,7 @@ const SPEC_FIELDS = [
     key: "drone_class",
     label: "Drone class",
     type: "string",
-    options: [["Any", ""], ["Racing", "racing"], ["Cinematic", "cinematic"], ["Survey", "survey"]],
+    options: [["Any", ""], ["Racing", "racing"], ["Cinematic", "cinematic"], ["Survey", "survey"], ["Military", "military"]],
   },
   {
     key: "num_motors",
@@ -21,7 +21,7 @@ const SPEC_FIELDS = [
     key: "blade_count",
     label: "Blades / prop",
     type: "int",
-    options: [["Any", ""], ["2", "2"], ["3", "3"]],
+    options: [["Any", ""], ["2", "2"], ["3", "3"], ["4", "4"]],
   },
   {
     key: "prop_diameter_inch",
@@ -118,7 +118,8 @@ export default function App() {
       <header>
         <h1>Augur</h1>
         <p className="tagline">
-          Multimodal drone property inference — calibrated distributions, never point estimates.
+          Passive multimodal drone detection & classification — infer a UAS's
+          properties and class from its signature, as calibrated distributions.
         </p>
         <span className={`status ${backendUp === false ? "down" : backendUp ? "up" : ""}`}>
           {backendUp === null && "checking backend…"}

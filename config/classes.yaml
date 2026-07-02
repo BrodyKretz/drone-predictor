@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 # Drone class definitions with prior bands used by the fusion layer when class
 # is uncertain. Ranges are deliberately wide; image/video evidence sharpens them.
@@ -26,6 +26,14 @@ classes:
     all_up_mass_kg: { low: 1.5, high: 25.0 }
     thrust_to_weight: { low: 1.8, high: 3.0 }
     disk_loading_n_m2: { low: 20, high: 80 }
+
+  military:
+    description: "Military/ISR-class UAS: reconnaissance quads through larger multirotor platforms. Wide envelope; often heavier and higher-endurance."
+    prop_diameter_inch: { low: 5.0, high: 24.0 }
+    num_motors: [4, 6, 8]
+    all_up_mass_kg: { low: 1.0, high: 30.0 }
+    thrust_to_weight: { low: 2.0, high: 8.0 }
+    disk_loading_n_m2: { low: 40, high: 300 }
 
   unknown:
     description: "Fallback when no class evidence is available."

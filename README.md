@@ -1,11 +1,18 @@
 # drone-predictor
 
-**Augur — Multimodal Drone Property Inference** (working name)
+**Augur — Passive Multimodal Drone Detection & Classification** (working name)
 
-Predicts a drone's physical and performance properties from any combination of
-four inputs — **sound, verbal spec, image, video**. Every output is a *calibrated
-distribution*, never a point estimate, and the model gets strictly more confident
-as you supply more inputs.
+A counter-UAS research concept: characterize and classify an unknown drone from
+its **passive signature** — sound, a verbal description, an image, or video —
+without any cooperation from the target. From any combination of those inputs it
+infers the drone's physical/performance properties and class (racing, cinematic,
+survey, military), so different airframes can be told apart by what they emit.
+
+This is a *detection/identification* concept in the spirit of counter-UAS work
+(e.g. the kind of passive-sensing efforts pursued by defense primes and the U.S.
+government) — **not** a tool for building or operating drones. Every output is a
+*calibrated distribution*, never a point estimate, and confidence increases
+strictly as more inputs are supplied.
 
 ## What it estimates
 
