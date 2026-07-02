@@ -117,6 +117,7 @@ class DroneClass(str, Enum):
     racing = "racing"
     cinematic = "cinematic"
     survey = "survey"
+    military = "military"
     unknown = "unknown"
 
 

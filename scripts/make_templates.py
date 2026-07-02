@@ -37,6 +37,10 @@ TEMPLATES = [
      dict(num_motors=6, prop_diameter_inch=15.0, prop_pitch_inch=5.0, blade_count=2,
           c_t=0.12, c_p=0.06, pole_count=14, efficiency=0.80, mass_kg=3.5,
           battery_wh=220.0, drone_class="survey")),
+    ("military", "Military ISR quad (13\", 3-blade)",
+     dict(num_motors=4, prop_diameter_inch=13.0, prop_pitch_inch=6.5, blade_count=3,
+          c_t=0.11, c_p=0.055, pole_count=14, efficiency=0.80, mass_kg=2.5,
+          battery_wh=180.0, drone_class="military")),
 ]
 
 
