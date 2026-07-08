@@ -23,7 +23,8 @@ def predict(
     audio: Path = typer.Option(None, exists=True, help="WAV flight recording"),
     verbal: Path = typer.Option(None, exists=True, help="JSON verbal spec"),
     image: list[Path] = typer.Option(None, help="Still image(s) [not yet wired]"),
-    video: Path = typer.Option(None, help="Flight video [not yet wired]"),
+    video: Path = typer.Option(None, exists=True, help="Video — its audio track is "
+                               "analyzed (needs ffmpeg); visual tracking not yet wired"),
     samples: int = typer.Option(8000, help="Monte Carlo sample count"),
     seed: int = typer.Option(0, help="RNG seed"),
 ):

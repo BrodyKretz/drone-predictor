@@ -358,5 +358,6 @@ def _honesty_notes(inputs: FusionInputs) -> list[str]:
         notes.append("No audio: RPM unconstrained, all thrust/power/mass intervals "
                      "are prior-width only.")
     if inputs.video_observations == []:
-        notes.append("No video: thrust-to-weight is a class prior, not measured.")
+        notes.append("No video tracking observations: thrust-to-weight is a "
+                     "class prior, not measured.")
     return notes

@@ -68,6 +68,13 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   encode/decode round-trip. Feeds maneuver segmentation.
 - **Maneuver segmentation** (`video/maneuvers.py`): hover/climb/cruise/coast from
   velocity series → coast mass observations.
+- **Audio-from-video** (`video/audio_extract.py`): when a video is given without
+  explicit audio, its audio track is demuxed (ffmpeg subprocess, no new Python
+  dep) and fed through the acoustic pipeline — footage that never shows the
+  drone still yields the full RPM analysis (the hiding-observer scenario).
+  Explicit `--audio` always wins to avoid double-counting the same sound.
+  Silent videos degrade with an honest note. Tested end-to-end with
+  ffmpeg-synthesized fixtures (AAC round-trip recovers RPM within 3%).
 - **Eval harness** (`eval.py`): drone-level leakage-free split assignment,
   §10 metrics (MAPE / coverage / sharpness), and conformal-calibrator fitting
   from a calib split. Capture protocol in `docs/GOLDEN_SET.md`.

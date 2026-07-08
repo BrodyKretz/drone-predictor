@@ -1,9 +1,13 @@
-"""Glue: turn raw inputs (audio file, verbal JSON) into a FusionInputs bundle
-and run the fusion. Image/video wiring is stubbed until those modules land."""
+"""Glue: turn raw inputs (audio file, verbal JSON, video) into a FusionInputs
+bundle and run the fusion. A video contributes its audio track (demuxed via
+ffmpeg) when no explicit audio is given — footage that never shows the drone
+still yields the full acoustic analysis. Visual tracking wiring is stubbed
+until real footage validates it."""
 
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +15,7 @@ import numpy as np
 from augur.audio import hover, rpm, spectral
 from augur.fusion.posterior import FusionInputs, fuse
 from augur.types import FlightState, PredictionReport, VerbalSpec
+from augur.video import audio_extract
 
 
 def audio_to_inputs(audio_path: str | Path, num_blades_hint: int | None = None,
@@ -36,11 +41,25 @@ def predict(audio: str | Path | None = None, verbal: str | Path | None = None,
     blade_hint = verbal_spec.blade_count if verbal_spec else None
 
     rpm_est, state = (None, FlightState.unknown)
+    extra_notes: list[str] = []
     if audio:
         rpm_est, state = audio_to_inputs(audio, num_blades_hint=blade_hint,
                                          rng=np.random.default_rng(seed))
+    elif video:
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = audio_extract.extract_audio(video, Path(tmp) / "video_audio.wav")
+            if wav is not None:
+                rpm_est, state = audio_to_inputs(wav, num_blades_hint=blade_hint,
+                                                 rng=np.random.default_rng(seed))
+                extra_notes.append(
+                    "Acoustic analysis ran on the video's audio track — usable "
+                    "even when the drone is never in frame.")
+            else:
+                extra_notes.append(
+                    "Video has no audio track: no acoustic analysis. Visual "
+                    "tracking is not yet wired, so the video contributed nothing.")
 
-    # Image/video modules not yet wired — they will append Observations here.
+    # Visual tracking not yet wired — it will append video Observations here.
     inputs = FusionInputs(
         verbal=verbal_spec,
         rpm_estimate=rpm_est,
@@ -48,4 +67,6 @@ def predict(audio: str | Path | None = None, verbal: str | Path | None = None,
         image_observations=[],
         video_observations=[],
     )
-    return fuse(inputs, n=n, seed=seed)
+    report = fuse(inputs, n=n, seed=seed)
+    report.notes.extend(extra_notes)
+    return report
