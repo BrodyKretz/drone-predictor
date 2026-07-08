@@ -27,8 +27,9 @@ from augur.fusion.observations import Observation
 
 # Default vision model. Overridable via the `model` arg or AUGUR_VLM_MODEL; the
 # spec calls for confirming the current id against live docs rather than trusting
-# this constant blindly.
-DEFAULT_VLM_MODEL = "claude-sonnet-4-6"
+# this constant blindly. Verified current 2026-07: Sonnet 5 adds high-res vision
+# (2576px long edge), which helps geometry read-off from photos.
+DEFAULT_VLM_MODEL = "claude-sonnet-5"
 
 _MEDIA_TYPES = {
     ".jpg": "image/jpeg",
@@ -178,6 +179,9 @@ def extract_from_image(image_path: str, model: str | None = None, client=None,
     message = client.messages.create(
         model=model or os.environ.get("AUGUR_VLM_MODEL", DEFAULT_VLM_MODEL),
         max_tokens=max_tokens,
+        # Sonnet 5 runs adaptive thinking by default, which spends from
+        # max_tokens; this is a fast structured extraction, so keep it off.
+        thinking={"type": "disabled"},
         messages=_build_messages(image_b64, media_type),
     )
     return parse_vlm_response(_response_text(message))

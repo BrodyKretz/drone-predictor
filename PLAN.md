@@ -130,9 +130,10 @@ honest interpretation of the "confidence ladder."
    **Capture protocol + landing steps are written up in `docs/GOLDEN_SET.md`; the
    eval harness (`eval.py`) already consumes it.**
 2. **One real VLM run** (`image/extract.py::extract_from_image`): the call is
-   wired + tested via a fake client. Confirm the default model id against live
-   docs, set `ANTHROPIC_API_KEY`, install `.[vision]`, and run once on a real
-   photo to validate.
+   wired + tested via a fake client, and the default model id was verified
+   current 2026-07-08 (`claude-sonnet-5`, high-res vision; thinking disabled for
+   fast extraction). Remaining: set `ANTHROPIC_API_KEY`, install `.[vision]`,
+   and run once on a real drone photo to validate.
 3. **Real footage for video tracking** (`video/track.py::track_drone`): the
    tracker is implemented + tested on synthetic frames and an opencv round-trip.
    Validating end-to-end needs real footage + flight-log truth + the `vision`
