@@ -24,7 +24,7 @@ import numpy as np
 from augur.audio.rpm import RPMEstimate
 from augur.config import Classes, Priors, load_classes, load_priors
 from augur.fusion.observations import Observation
-from augur.physics import core
+from augur.physics import core, prop_db
 from augur.types import (
     Attribution,
     Distribution,
@@ -137,9 +137,17 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
     # --- pitch (via pitch/diameter ratio prior) ---
     _pitch = _scale(u_pitch, priors.pitch_to_diameter(class_name)) * diameter_in
 
-    # --- coefficients (fallback bands; same #draws as the db path) ---
-    c_t = _scale(u_ct, priors.c_t_fallback)
-    c_p = _scale(u_cp, priors.c_p_fallback)
+    # --- coefficients: measured props when diameter is asserted, else fallback ---
+    coeffs = None
+    if verbal and verbal.prop_diameter_inch:
+        coeffs = prop_db.coefficients_from_streams(
+            verbal.prop_diameter_inch, u_ct,
+            pitch_inch=verbal.prop_pitch_inch, blade_count=verbal.blade_count)
+    if coeffs is not None:
+        c_t, c_p = coeffs
+    else:
+        c_t = _scale(u_ct, priors.c_t_fallback)
+        c_p = _scale(u_cp, priors.c_p_fallback)
     efficiency = _scale(u_eff, priors.efficiency)
     energy_density = _scale(u_ed, priors.energy_density("lipo"))
     batt_frac = _scale(u_bf, priors.battery_mass_fraction(class_name))
@@ -308,11 +316,21 @@ def _assumptions(inputs: FusionInputs, priors: Priors) -> list[str]:
         f"mass from class prior — not in hover (state={inputs.flight_state.value}), "
         f"so thrust does not equal weight"
     )
+    diameter = inputs.verbal.prop_diameter_inch if inputs.verbal else None
+    pitch = inputs.verbal.prop_pitch_inch if inputs.verbal else None
+    blades = inputs.verbal.blade_count if inputs.verbal else None
+    n_props = prop_db.matched_prop_count(diameter, pitch, blades)
+    coeff_line = (
+        f"C_T/C_P from {n_props} measured prop(s) within tolerance of "
+        f"{diameter} in (prop_db)"
+        if n_props else
+        "C_T/C_P from config fallback bands (no prop_db match for these inputs)"
+    )
     return [
         f"motor/ESC efficiency in [{eff.low}, {eff.high}]",
         f"LiPo energy density in [{ed.low}, {ed.high}] Wh/kg",
         f"battery mass fraction ({cls}) in [{bmf.low}, {bmf.high}]",
-        "C_T/C_P from config fallback bands (prop_db.parquet not yet ingested)",
+        coeff_line,
         mass_line,
     ]
 

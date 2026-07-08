@@ -33,10 +33,40 @@ def uiuc_dir(tmp_path):
     return tmp_path
 
 
+@pytest.fixture
+def uiuc_dir_with_blades(uiuc_dir):
+    (uiuc_dir / "da4022_10x4.7_3b_static_md.txt").write_text(_FILE_5x3)
+    return uiuc_dir
+
+
 def test_parse_prop_name():
     assert prop_ingest.parse_prop_name("apcsf_10x4.7_static_rd.txt") == (10.0, 4.7)
     assert prop_ingest.parse_prop_name("nr640_4.2x4_static.txt") == (4.2, 4.0)
     assert prop_ingest.parse_prop_name("readme.txt") is None
+
+
+def test_parse_prop_name_mm_makers_convert_to_inches():
+    # Volume-2 micro props are published in mm (site: "140 mm X 45 mm").
+    d, p = prop_ingest.parse_prop_name("vp_140x45_static_0590rd.txt")
+    assert d == pytest.approx(140 / 25.4)
+    assert p == pytest.approx(45 / 25.4)
+    d, p = prop_ingest.parse_prop_name("kpf_96x70_static_0382rd.txt")
+    assert d == pytest.approx(96 / 25.4)
+    assert p == pytest.approx(70 / 25.4)
+
+
+def test_parse_prop_name_restores_dropped_decimals():
+    # Site lists these as 12.5x9 and 12x6.5; filenames drop the '.'.
+    assert prop_ingest.parse_prop_name("ancf_125x9_static_0905od.txt") == (12.5, 9.0)
+    assert prop_ingest.parse_prop_name("ancf_12x65_static_0806od.txt") == (12.0, 6.5)
+    assert prop_ingest.parse_prop_name("apce_14x85_static_1014od.txt") == (14.0, 8.5)
+    assert prop_ingest.parse_prop_name("ancf_125x75_static_0914od.txt") == (12.5, 7.5)
+
+
+def test_parse_prop_name_keeps_genuine_high_pitch():
+    # Real Aeronaut CAM designations with pitch > diameter — must not be rescaled.
+    assert prop_ingest.parse_prop_name("ancf_12x13_static_0780od.txt") == (12.0, 13.0)
+    assert prop_ingest.parse_prop_name("apcsp_7x9_static_2897cm.txt") == (7.0, 9.0)
 
 
 def test_parse_static_file_uses_plateau_median(tmp_path):
@@ -79,6 +109,80 @@ def test_prop_db_prefers_ingested_data(uiuc_dir, tmp_path, monkeypatch):
     # All samples come from the single matched 10x4.7 prop row.
     assert np.allclose(c_t, 0.1130)
     assert np.allclose(c_p, 0.0503)
+
+
+def test_blade_count_parsed_from_filename(uiuc_dir_with_blades):
+    """UIUC marks 3/4-blade variants with a _3b_/_4b_ suffix; unmarked files are
+    the standard 2-blade props."""
+    df = prop_ingest.build_prop_db(uiuc_dir_with_blades)
+    assert "blade_count" in df.columns
+    three = df[df["blade_count"] == 3]
+    assert len(three) == 1
+    assert three.iloc[0]["diameter_inch"] == pytest.approx(10.0)
+    assert (df[df["blade_count"] == 2].shape[0]) == 2
+
+
+def test_matching_filters_on_blade_count(uiuc_dir_with_blades, tmp_path, monkeypatch):
+    df = prop_ingest.build_prop_db(uiuc_dir_with_blades)
+    out = tmp_path / "prop_db.parquet"
+    prop_ingest.save_prop_db(df, out)
+    monkeypatch.setattr(prop_db, "_PROP_DB_PATH", out)
+
+    # Two 10-inch rows exist (2-blade at Ct 0.1130, 3-blade at Ct 0.1310);
+    # asserting blade count must select only the matching one.
+    u = np.linspace(0.0, 0.999, 100)
+    c_t, _ = prop_db.coefficients_from_streams(10.0, u, blade_count=2)
+    assert np.allclose(c_t, 0.1130)
+    c_t, _ = prop_db.coefficients_from_streams(10.0, u, blade_count=3)
+    assert np.allclose(c_t, 0.1310)
+    assert prop_db.matched_prop_count(10.0) == 2
+    assert prop_db.matched_prop_count(10.0, blade_count=2) == 1
+
+
+def test_coefficients_from_streams_uses_matched_rows(uiuc_dir, tmp_path, monkeypatch):
+    """The CRN path: pre-drawn uniforms index the matched rows, both coefficients
+    correlated from the same prop."""
+    df = prop_ingest.build_prop_db(uiuc_dir)
+    out = tmp_path / "prop_db.parquet"
+    prop_ingest.save_prop_db(df, out)
+    monkeypatch.setattr(prop_db, "_PROP_DB_PATH", out)
+
+    u = np.linspace(0.0, 0.999, 200)
+    coeffs = prop_db.coefficients_from_streams(10.0, u)
+    assert coeffs is not None
+    c_t, c_p = coeffs
+    assert np.allclose(c_t, 0.1130)  # single matched 10x4.7 row
+    assert np.allclose(c_p, 0.0503)
+
+    assert prop_db.coefficients_from_streams(30.0, u) is None
+    assert prop_db.coefficients_from_streams(None, u) is None
+    assert prop_db.matched_prop_count(10.0) == 1
+    assert prop_db.matched_prop_count(30.0) == 0
+
+
+def test_posterior_uses_prop_db_when_diameter_asserted(uiuc_dir, tmp_path, monkeypatch):
+    from augur.fusion.posterior import FusionInputs, fuse
+    from augur.types import VerbalSpec
+
+    df = prop_ingest.build_prop_db(uiuc_dir)
+    out = tmp_path / "prop_db.parquet"
+    prop_ingest.save_prop_db(df, out)
+    inputs = FusionInputs(verbal=VerbalSpec(num_motors=4, prop_diameter_inch=10.0,
+                                            drone_class="racing"))
+
+    monkeypatch.setattr(prop_db, "_PROP_DB_PATH", out)
+    with_db = fuse(inputs, n=4000, seed=3)
+    assert any("measured prop" in a for a in with_db.assumptions)
+
+    monkeypatch.setattr(prop_db, "_PROP_DB_PATH", tmp_path / "missing.parquet")
+    fallback = fuse(inputs, n=4000, seed=3)
+    assert any("fallback" in a for a in fallback.assumptions)
+
+    # One matched prop pins C_T/C_P -> thrust and power tighten vs the wide band.
+    for var in ("total_thrust_n", "electrical_power_w"):
+        w_db = with_db.variables[var].interval_high - with_db.variables[var].interval_low
+        w_fb = fallback.variables[var].interval_high - fallback.variables[var].interval_low
+        assert w_db < w_fb, f"prop_db did not tighten {var}"
 
 
 def test_prop_db_falls_back_when_no_match(uiuc_dir, tmp_path, monkeypatch):

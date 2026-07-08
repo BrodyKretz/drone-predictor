@@ -19,7 +19,11 @@ from pathlib import Path
 
 import pandas as pd
 
-PROP_DB_COLUMNS = ["diameter_inch", "pitch_inch", "c_t_static", "c_p_static", "source"]
+PROP_DB_COLUMNS = ["diameter_inch", "pitch_inch", "blade_count", "c_t_static",
+                   "c_p_static", "source"]
+
+# 3/4-blade variants are marked `_3b_` / `_4b_`; unmarked props are 2-blade.
+_BLADE_RE = re.compile(r"_(\d)b_", re.IGNORECASE)
 
 # `10x4.7`, `4.2x4` — diameter x pitch, in inches. Case-insensitive on the 'x'.
 _NAME_RE = re.compile(r"(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)", re.IGNORECASE)
@@ -27,13 +31,35 @@ _NAME_RE = re.compile(r"(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)", re.IGNORECASE)
 # Low RPM is Reynolds-sensitive and noisy; prefer the high-RPM plateau.
 _RPM_FLOOR = 2000.0
 
+# Volume-2 micro-prop makers whose filenames give dimensions in mm (the site
+# lists them as e.g. "140 mm X 45 mm"): Plantraco, E-flite, Vapor, KP Folding.
+_MM_MAKERS = frozenset({"pl", "ef", "vp", "kpf"})
+
+# Largest inch-designated prop in the database is 21x13; anything bigger in an
+# inch-name is a dropped decimal point (site lists ancf_125x9 as "12.5 x 9").
+_MAX_DIAMETER_INCH = 25.0
+
 
 def parse_prop_name(name: str) -> tuple[float, float] | None:
-    """Extract (diameter_inch, pitch_inch) from a UIUC-style file or prop name."""
+    """Extract (diameter_inch, pitch_inch) from a UIUC-style file or prop name.
+
+    Normalizes the dataset's naming quirks: mm-designated micro props (known
+    maker prefixes) are converted to inches, and dropped decimal points
+    (125x9 -> 12.5x9, 12x65 -> 12x6.5) are restored. Genuine pitch>diameter
+    designations (e.g. Aeronaut 12x13) are left alone — only pitch beyond
+    twice the diameter is treated as a dropped decimal."""
     m = _NAME_RE.search(name)
     if not m:
         return None
-    return float(m.group(1)), float(m.group(2))
+    diameter, pitch = float(m.group(1)), float(m.group(2))
+
+    if name.split("_", 1)[0].lower() in _MM_MAKERS:
+        return diameter / 25.4, pitch / 25.4
+    if diameter > _MAX_DIAMETER_INCH:
+        diameter /= 10.0
+    if pitch > 2 * diameter:
+        pitch /= 10.0
+    return diameter, pitch
 
 
 def _find_header(lines: list[str]) -> tuple[int, tuple[int, int, int] | None]:
@@ -94,9 +120,11 @@ def build_prop_db(src_dir: str | Path, source: str = "UIUC",
         coeffs = parse_static_file(path)
         if dims is None or coeffs is None:
             continue
+        blade_m = _BLADE_RE.search(path.name)
         rows.append({
             "diameter_inch": dims[0],
             "pitch_inch": dims[1],
+            "blade_count": int(blade_m.group(1)) if blade_m else 2,
             "c_t_static": coeffs[0],
             "c_p_static": coeffs[1],
             "source": source,

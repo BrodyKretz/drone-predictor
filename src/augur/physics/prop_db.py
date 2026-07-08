@@ -56,6 +56,19 @@ def sample_coefficients(
     return c_t, c_p
 
 
+def _matched_rows(db: pd.DataFrame, diameter_inch: float,
+                  pitch_inch: float | None,
+                  blade_count: int | None = None) -> pd.DataFrame:
+    """Rows within a diameter tolerance (and pitch/blade filters if given)."""
+    tol = 0.75  # inches
+    mask = (db["diameter_inch"] - diameter_inch).abs() <= tol
+    if pitch_inch is not None and "pitch_inch" in db:
+        mask &= (db["pitch_inch"] - pitch_inch).abs() <= 1.0
+    if blade_count is not None and "blade_count" in db:
+        mask &= db["blade_count"] == blade_count
+    return db[mask]
+
+
 def _sample_from_db(
     db: pd.DataFrame,
     diameter_inch: float,
@@ -65,15 +78,11 @@ def _sample_from_db(
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Sample C_T/C_P from the ingested database near the requested diameter.
 
-    Expects columns: diameter_inch, pitch_inch, c_t_static, c_p_static. Selects
-    rows within a diameter tolerance (and pitch tolerance if given), then draws
-    with replacement so the spread of the matched rows becomes the prior width.
+    Expects columns: diameter_inch, pitch_inch, c_t_static, c_p_static. Draws
+    matched rows with replacement so the spread of the matched rows becomes the
+    prior width.
     """
-    tol = 0.75  # inches
-    mask = (db["diameter_inch"] - diameter_inch).abs() <= tol
-    if pitch_inch is not None and "pitch_inch" in db:
-        mask &= (db["pitch_inch"] - pitch_inch).abs() <= 1.0
-    matched = db[mask]
+    matched = _matched_rows(db, diameter_inch, pitch_inch)
     if matched.empty:
         return None, None
     idx = rng.integers(0, len(matched), size=n)
@@ -81,3 +90,43 @@ def _sample_from_db(
         matched["c_t_static"].to_numpy()[idx],
         matched["c_p_static"].to_numpy()[idx],
     )
+
+
+def coefficients_from_streams(
+    diameter_inch: float | None,
+    u: np.ndarray,
+    pitch_inch: float | None = None,
+    blade_count: int | None = None,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Common-random-number path for the fusion posterior: index the matched
+    rows with a pre-drawn unit-uniform stream instead of a fresh rng, so
+    interval widths across input subsets differ only from real information.
+    C_T and C_P come from the same row, preserving their per-prop correlation.
+
+    Returns None when there is no database, no diameter, or no match — the
+    caller then scales the same stream into the fallback band."""
+    if diameter_inch is None:
+        return None
+    db = _load_db()
+    if db is None:
+        return None
+    matched = _matched_rows(db, diameter_inch, pitch_inch, blade_count)
+    if matched.empty:
+        return None
+    idx = np.floor(u * len(matched)).astype(int)
+    return (
+        matched["c_t_static"].to_numpy()[idx],
+        matched["c_p_static"].to_numpy()[idx],
+    )
+
+
+def matched_prop_count(diameter_inch: float | None,
+                       pitch_inch: float | None = None,
+                       blade_count: int | None = None) -> int:
+    """How many ingested props inform this diameter (0 means fallback bands)."""
+    if diameter_inch is None:
+        return 0
+    db = _load_db()
+    if db is None:
+        return 0
+    return len(_matched_rows(db, diameter_inch, pitch_inch, blade_count))

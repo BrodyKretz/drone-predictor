@@ -3,7 +3,7 @@
 Living status doc. Full spec: [`docs/SPEC.md`](docs/SPEC.md). Build agreements:
 spec §0. **Update the status column whenever a phase advances.**
 
-_Last updated: 2026-06-28_
+_Last updated: 2026-07-07_
 
 ## Where this stands right now
 
@@ -12,9 +12,11 @@ end-to-end (Phases 0–4 + the testable physics from later phases), exposed via 
 a CLI and a FastAPI endpoint, with a property-based round-trip suite over the
 physics and audio recovery. Image/video/calibration are now implemented and
 tested (VLM call via injected fake client, video tracker on synthetic frames,
-eval harness on synthetic reports) — not stubs. The remaining blockers are purely
-external: data / API key / hardware (see "Blocked on you"). The code is close to
-feature-complete; what's missing is real data. 112 tests pass.
+eval harness on synthetic reports) — not stubs. The UIUC prop data is downloaded
+and ingested (250 props → `config/prop_db.parquet`) and the fusion posterior now
+draws measured C_T/C_P when the verbal spec asserts a prop diameter. The
+remaining blockers are purely external: golden-set data / API key / hardware
+(see "Blocked on you"). 119 tests pass.
 
 Run it:
 ```bash
@@ -90,9 +92,16 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   committed. DroneAudioset (MIT) is the bundle-able but noisier alternative.
 - **Prop-DB ingest** (`prop_ingest.py` + `scripts/ingest_uiuc.py`): parses UIUC/APC
   static-test files (`<maker>_<D>x<P>_static_*.txt`) into one representative
-  (C_T, C_P) per prop → `config/prop_db.parquet`, which `prop_db` then prefers
-  over the fallback bands. Validated against format fixtures; **awaiting the real
-  data download + license check (see "Blocked on you" #4)**.
+  (C_T, C_P, blade_count) per test file → `config/prop_db.parquet` (250 props,
+  UIUC vols 1–4, downloaded 2026-07-07 — provenance + naming-quirk normalization
+  in `data/public/SOURCES.md`). The fusion posterior (`posterior.py`) draws
+  coefficients from matched props (diameter ±0.75", pitch ±1" and exact blade
+  count when asserted) via a CRN-aligned stream, falling back to the config
+  bands when nothing matches; the report's assumptions block says which path ran.
+  **Honesty note:** with pitch unasserted, measured 5" props span C_T 0.054–0.18,
+  so intervals got *wider* than the old hand-set fallback band [0.08, 0.14] —
+  the band was optimistic, and per design rule §0.4 the wide interval is correct.
+  Asserting pitch/blade count is what narrows it.
 - **Property-based round-trip** (`tests/property/`): Hypothesis sweeps over the
   physics identities (BPF↔RPM, C_T-cancelling thrust ratio, hover force balance,
   disk loading, frame geometry, endurance monotonicity) and audio RPM recovery
@@ -123,28 +132,24 @@ honest interpretation of the "confidence ladder."
    tracker is implemented + tested on synthetic frames and an opencv round-trip.
    Validating end-to-end needs real footage + flight-log truth + the `vision`
    extra.
-4. **Public data download** (UIUC/APC prop data): the *ingest pipeline is built and
-   tested* (`prop_ingest.py` + `scripts/ingest_uiuc.py`). What remains is a human
-   call: download the UIUC data, verify its license permits use/redistribution in
-   this MIT repo, log provenance in `data/public/SOURCES.md`, then run
-   `python scripts/ingest_uiuc.py --src <dir>` to build `config/prop_db.parquet`.
-   Until then C_T/C_P use the wide config fallback bands. (Betaflight blackbox /
-   DJI logs remain stubs documenting their target schema.)
+4. ~~UIUC prop data~~ **Resolved 2026-07-07:** downloaded + ingested (250 props;
+   provenance in `data/public/SOURCES.md`). The site has no explicit license
+   (© UIUC Applied Aerodynamics Group, citation requested), so the derived
+   `config/prop_db.parquet` is **local-only like DREGON** — gitignored, with the
+   rebuild recipe in the README. Could be revisited by emailing Prof. Selig for
+   explicit permission. (Betaflight blackbox / DJI logs remain stubs documenting
+   their target schema.)
 
 ## Next steps (in order)
 
-1. Download UIUC/APC prop data + license check, then run `scripts/ingest_uiuc.py`
-   to build `config/prop_db.parquet` (the ingest code is done; this tightens every
-   thrust/power/mass interval). No hardware — just the download + license call.
-2. Start collecting the golden set per `docs/GOLDEN_SET.md`; thrust-stand sweeps
+1. Start collecting the golden set per `docs/GOLDEN_SET.md`; thrust-stand sweeps
    first. This is now the critical path — nearly everything else is code-complete.
-3. One real VLM run to confirm the wired call (set the key, pick the model).
-4. Once golden `calib`/`test` exist: fit conformal (`eval.fit_calibrator`),
+2. One real VLM run to confirm the wired call (set the key, pick the model).
+3. Once golden `calib`/`test` exist: fit conformal (`eval.fit_calibrator`),
    produce reliability diagrams + the §10 table (`eval.format_metrics_table`).
 
 ## Not yet built
 
-- `config/prop_db.parquet` (ingest pipeline ready; data not yet downloaded).
 - Reliability-diagram plots (`viz` extra / matplotlib). The metric table + coverage
   numbers are coded (`eval.py`); only the plotted diagrams and a real populated
   §10 table (needs the golden set) remain.

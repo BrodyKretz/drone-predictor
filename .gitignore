@@ -36,7 +36,9 @@ data/public/*
 !data/public/SOURCES.md
 *.wav
 *.mp4
+# UIUC-derived prop_db.parquet stays local: the source data has no explicit
+# license (citation-only), so we don't redistribute derivatives in an MIT repo.
+# Rebuild locally: see "Prop database" in README.md.
 *.parquet
-!config/*.parquet
 # Bundled synthetic demo clips for the web UI (our own generated data).
 !web/public/templates/*.wav

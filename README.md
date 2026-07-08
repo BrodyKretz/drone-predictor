@@ -32,18 +32,18 @@ wide — the system does not invent a number to fill the gap.
 
 ## Status
 
-**The sound + verbal → calibrated-distributions pipeline works end to end.**
-Phases 0–4 are complete and tested (67 tests). Image, video, and calibration are
-scaffolded: the self-contained logic is implemented, and the parts that need
-external data or a live API are honestly stubbed (they raise rather than fake a
-result). See **[`PLAN.md`](PLAN.md)** for live phase status and next steps, and
+**The sound + verbal → calibrated-distributions pipeline works end to end**
+(119 tests). Image, video, and calibration logic are implemented and tested
+against synthetic data and fake clients; what remains is external — real
+footage, one live VLM run, and the golden-set measurements. See
+**[`PLAN.md`](PLAN.md)** for live phase status and next steps, and
 **[`docs/SPEC.md`](docs/SPEC.md)** for the full spec.
 
 ```bash
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q                      # 83 tests
+./.venv/bin/pytest tests/ -q
 
 ./.venv/bin/pip install -e ".[serve]" && ./.venv/bin/augur serve   # HTTP API on :8000
 ```
@@ -52,13 +52,31 @@ A web UI (Vite + React) lives in [`web/`](web/) — upload audio + a verbal spec
 see the distributions as interval bars with confidence colors and per-input
 attribution. Run `augur serve`, then `npm install && npm run dev` in `web/`.
 
+## Prop database (optional, local-only)
+
+Thrust/power priors tighten when `config/prop_db.parquet` exists — a summary
+(one static C_T/C_P per prop) derived from the
+[UIUC Propeller Data Site](https://m-selig.ae.illinois.edu/props/propDB.html).
+That data is citation-only (no redistribution license), so the parquet is **not
+committed**; without it the pipeline honestly falls back to wide coefficient
+bands. To build it locally:
+
+```bash
+curl -LO https://m-selig.ae.illinois.edu/props/download/UIUC-propDB.zip
+unzip UIUC-propDB.zip -d data/external/uiuc
+./.venv/bin/python scripts/ingest_uiuc.py --src data/external/uiuc/UIUC-propDB
+```
+
+Provenance and citation live in [`data/public/SOURCES.md`](data/public/SOURCES.md).
+
 | phase | status |
 |---|---|
 | 0 Scaffold · 1 Simulator · 2 Audio→RPM · 3 Physics+verbal · 4 Fusion | ✅ done + tested |
 | CLI · HTTP API (`/predict`, `/health`) · property-based round-trip suite | ✅ done + tested |
-| 5 Image (geometry + VLM parser done; live VLM call stubbed) | 🟡 partial |
-| 6 Video (maneuver seg + coast-down mass done; pixel tracking stubbed) | 🟡 partial |
-| 7 Calibration (conformal done; needs golden set for fit + metric table) | 🟡 partial |
+| 5 Image (geometry + VLM extraction done; needs one real API run) | 🟡 near-complete |
+| 6 Video (tracking + maneuver seg + coast-down mass done; needs real footage) | 🟡 near-complete |
+| 7 Calibration (conformal + eval harness done; needs golden set for fit + metric table) | 🟡 partial |
+| Prop database (UIUC ingest + fusion wiring done; parquet is local-only) | ✅ done + tested |
 
 ## Stack
 
