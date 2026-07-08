@@ -73,6 +73,11 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   from a calib split. Capture protocol in `docs/GOLDEN_SET.md`.
 - **Conformal calibration** (`fusion/calibration.py`): split-conformal width
   factor; corrects overconfident intervals to nominal coverage on a holdout.
+- **Reliability diagrams** (`eval.reliability_curve` + `viz.plot_reliability`,
+  viz extra): empirical coverage vs nominal level from raw posterior samples
+  (`fuse_distributions`), one curve per variable. Verified on synthetic drones —
+  it correctly exposes the pre-calibration overconfidence the conformal step
+  will fix.
 - **Manifest** (`data_manifest.py`): schema + round-trip + drone-level leakage
   guard.
 - **CLI** (`augur predict`, `augur version`, `augur serve`), report renderer,
@@ -150,8 +155,6 @@ honest interpretation of the "confidence ladder."
 
 ## Not yet built
 
-- Reliability-diagram plots (`viz` extra / matplotlib). The metric table + coverage
-  numbers are coded (`eval.py`); only the plotted diagrams and a real populated
-  §10 table (needs the golden set) remain.
 - Golden-set data itself + a thin `scripts/ingest_golden.py` (the schema, split
-  assignment, and eval it feeds are all built; see `docs/GOLDEN_SET.md`).
+  assignment, and eval it feeds are all built; see `docs/GOLDEN_SET.md`). The
+  §10 table and reliability diagrams are fully coded — they just need this data.

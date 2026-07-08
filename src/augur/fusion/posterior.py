@@ -250,6 +250,19 @@ def _subset(inputs: FusionInputs, sources: set[str]) -> FusionInputs:
     )
 
 
+def fuse_distributions(inputs: FusionInputs, n: int = 8000,
+                       seed: int = 0) -> dict[str, Distribution]:
+    """Raw posterior distributions for every output variable — what fuse()
+    summarizes. Used by the eval harness (reliability curves need quantiles at
+    many levels, which summaries can't provide). Same seed as fuse() gives
+    identical samples (common random numbers)."""
+    priors, classes = load_priors(), load_classes()
+    outputs = _run(_subset(inputs, set(inputs.sources_present())), n, priors,
+                   classes, np.random.default_rng(seed))
+    return {v: Distribution(outputs[v], unit=OUTPUT_UNITS[v] or None)
+            for v in OUTPUT_UNITS}
+
+
 def fuse(inputs: FusionInputs, n: int = 8000, seed: int = 0) -> PredictionReport:
     """Fuse all present inputs into a PredictionReport with per-modality
     attribution of interval narrowing."""

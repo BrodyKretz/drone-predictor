@@ -83,3 +83,54 @@ def test_format_metrics_table_runs():
     truths = [{"rpm": 9000.0} for _ in range(5)]
     table = ev.format_metrics_table(ev.evaluate(reports, truths))
     assert "rpm" in table and "MAPE" in table
+
+
+def test_reliability_curve_calibrated_model_tracks_diagonal():
+    # Truths drawn from the same distribution the samples describe -> empirical
+    # coverage matches the nominal level at every point on the curve.
+    rng = np.random.default_rng(0)
+    dists, truths = [], []
+    for _ in range(400):
+        mu = rng.uniform(-5.0, 5.0)
+        dists.append(Distribution(rng.normal(mu, 1.0, 2000)))
+        truths.append(float(rng.normal(mu, 1.0)))
+    levels, coverage = ev.reliability_curve(dists, truths)
+    assert levels.shape == coverage.shape
+    assert np.all(np.abs(coverage - levels) < 0.07)
+
+
+def test_reliability_curve_overconfident_model_sits_below_diagonal():
+    # Stated spread 3x too narrow -> coverage under nominal everywhere.
+    rng = np.random.default_rng(1)
+    dists, truths = [], []
+    for _ in range(300):
+        mu = rng.uniform(-5.0, 5.0)
+        dists.append(Distribution(rng.normal(mu, 0.5, 2000)))
+        truths.append(float(rng.normal(mu, 1.5)))
+    levels, coverage = ev.reliability_curve(dists, truths)
+    assert np.all(coverage < levels)
+
+
+def test_reliability_curve_validates_inputs():
+    with pytest.raises(ValueError):
+        ev.reliability_curve([], [])
+    with pytest.raises(ValueError):
+        ev.reliability_curve([Distribution([1.0, 2.0])], [1.0, 2.0])
+    levels, coverage = ev.reliability_curve(
+        [Distribution(np.linspace(0, 1, 100))], [0.5], levels=(0.5, 0.9))
+    assert list(levels) == [0.5, 0.9]
+    assert coverage.shape == (2,)
+
+
+def test_fuse_distributions_matches_fuse_summaries():
+    from augur.fusion.posterior import FusionInputs, fuse, fuse_distributions
+    from augur.types import VerbalSpec
+
+    inputs = FusionInputs(verbal=VerbalSpec(num_motors=4, prop_diameter_inch=5.0,
+                                            blade_count=2, drone_class="racing"))
+    dists = fuse_distributions(inputs, n=2000, seed=5)
+    report = fuse(inputs, n=2000, seed=5)
+    assert set(dists) == set(report.variables)
+    for var, dist in dists.items():
+        assert isinstance(dist, Distribution)
+        assert dist.median == pytest.approx(report.variables[var].median)

@@ -23,7 +23,9 @@ import numpy as np
 
 from augur.data_manifest import Split
 from augur.fusion.calibration import IntervalCalibrator
-from augur.types import PredictionReport, VariableSummary
+from augur.types import Distribution, PredictionReport, VariableSummary
+
+DEFAULT_RELIABILITY_LEVELS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 
 
 def assign_splits(drone_ids, fractions: tuple[float, float, float] = (0.6, 0.2, 0.2),
@@ -111,6 +113,32 @@ def evaluate(reports: list[PredictionReport], truths: list[dict],
             summaries, tvals = zip(*pairs, strict=True)
             results[var] = score_variable(list(summaries), list(tvals), variable=var)
     return results
+
+
+def reliability_curve(
+    distributions: list[Distribution],
+    truths: list[float],
+    levels: tuple[float, ...] = DEFAULT_RELIABILITY_LEVELS,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Empirical coverage at each nominal central-interval level.
+
+    For a calibrated model the curve tracks the diagonal: X% intervals cover X%
+    of held-out truths. Points below the diagonal mean overconfidence. Needs the
+    raw Distributions (not summaries) because each level reads different
+    quantiles — get them from `fuse_distributions`."""
+    if not distributions:
+        raise ValueError("need at least one (distribution, truth) pair")
+    if len(distributions) != len(truths):
+        raise ValueError("distributions and truths must be equal length")
+
+    coverage = []
+    for level in levels:
+        inside = [
+            d.interval(level)[0] <= t <= d.interval(level)[1]
+            for d, t in zip(distributions, truths, strict=True)
+        ]
+        coverage.append(float(np.mean(inside)))
+    return np.asarray(levels, dtype=float), np.asarray(coverage)
 
 
 def fit_calibrator(reports: list[PredictionReport], truths: list[dict], variable: str,
