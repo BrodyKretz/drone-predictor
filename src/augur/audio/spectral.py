@@ -7,6 +7,7 @@ is an optional extra for richer order-tracking later.
 from __future__ import annotations
 
 import io
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -25,16 +26,24 @@ def _to_mono_float(data: np.ndarray) -> np.ndarray:
     return data
 
 
+def _read_wav(source: str | io.BytesIO) -> tuple[int, np.ndarray]:
+    try:
+        return wavfile.read(source)
+    except (struct.error, UnboundLocalError) as e:
+        # scipy lets these escape instead of raising ValueError when the RIFF data is truncated
+        raise ValueError(f"not a valid WAV file: {e}") from e
+
+
 def load_wav(path: str | Path) -> tuple[np.ndarray, int]:
     """Load a WAV as mono float64 in [-1, 1]. Returns (samples, sample_rate)."""
-    sr, data = wavfile.read(str(path))
+    sr, data = _read_wav(str(path))
     return _to_mono_float(data), int(sr)
 
 
 def read_wav_bytes(raw: bytes) -> tuple[np.ndarray, int]:
     """load_wav for an in-memory WAV (an HTTP upload). Raises ValueError if the
     bytes aren't a WAV."""
-    sr, data = wavfile.read(io.BytesIO(raw))
+    sr, data = _read_wav(io.BytesIO(raw))
     return _to_mono_float(data), int(sr)
 
 
