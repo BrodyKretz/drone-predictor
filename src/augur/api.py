@@ -26,6 +26,14 @@ from augur.fusion.posterior import FusionInputs, fuse_distributions
 from augur.pipeline import predict
 from augur.types import IdentifyReport, PredictionReport, VerbalSpec
 
+MAX_MC_SAMPLES = 20000
+MAX_UPLOAD_BYTES = 16 * 1024 * 1024
+
+
+def _check_sample_count(n):
+    if isinstance(n, bool) or not isinstance(n, (int, np.integer)) or not 1 <= n <= MAX_MC_SAMPLES:
+        raise ValueError(f"samples must be between 1 and {MAX_MC_SAMPLES}")
+
 
 def predict_from_uploads(
     audio_bytes: bytes | None = None,
@@ -41,6 +49,7 @@ def predict_from_uploads(
     """
     if audio_bytes is None and verbal_json is None:
         raise ValueError("provide at least one of audio or verbal")
+    _check_sample_count(n)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
@@ -53,6 +62,8 @@ def predict_from_uploads(
 
         if verbal_json is not None:
             data = json.loads(verbal_json)
+            if not isinstance(data, dict):
+                raise ValueError("verbal spec must be a JSON object")
             VerbalSpec(**data)  # validate shape before writing
             verbal_path = tmpdir / "verbal.json"
             verbal_path.write_text(json.dumps(data))
@@ -63,11 +74,18 @@ def predict_from_uploads(
 def identify_from_upload(audio_bytes: bytes, spec_json: str | bytes | None = None,
                          n: int = 4000, seed: int = 0) -> IdentifyReport:
     """Identify the drone class from one in-memory WAV window (the live UI sends
-    the latest few seconds). Raises ValueError on non-WAV or too-short audio."""
+    the latest few seconds). Raises ValueError on non-WAV or too-short audio, a sample
+    count outside 1..MAX_MC_SAMPLES, or a spec that isn't a JSON object."""
     if not isinstance(audio_bytes, (bytes, bytearray)):
         raise ValueError(f"audio_bytes must be bytes, got {type(audio_bytes).__name__}")
+    _check_sample_count(n)
     samples, sample_rate = spectral.read_wav_bytes(audio_bytes)
-    verbal = VerbalSpec(**json.loads(spec_json)) if spec_json else None
+    verbal = None
+    if spec_json:
+        spec = json.loads(spec_json)
+        if not isinstance(spec, dict):
+            raise ValueError("spec must be a JSON object")
+        verbal = VerbalSpec(**spec)
     return identify(samples, sample_rate, verbal, n=n, seed=seed)
 
 
@@ -117,7 +135,11 @@ def create_app():
         samples: int = Form(default=8000),
         seed: int = Form(default=0),
     ):
-        audio_bytes = await audio.read() if audio is not None else None
+        audio_bytes = None
+        if audio is not None:
+            audio_bytes = await audio.read(MAX_UPLOAD_BYTES + 1)
+            if len(audio_bytes) > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="audio upload larger than 16 MiB")
         verbal_payload: str | bytes | None = None
         if verbal is not None:
             verbal_payload = await verbal.read()
@@ -136,8 +158,11 @@ def create_app():
         samples: int = Form(default=4000),
         seed: int = Form(default=0),
     ):
+        audio_bytes = await audio.read(MAX_UPLOAD_BYTES + 1)
+        if len(audio_bytes) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="audio upload larger than 16 MiB")
         try:
-            return identify_from_upload(await audio.read(), spec, n=samples, seed=seed)
+            return identify_from_upload(audio_bytes, spec, n=samples, seed=seed)
         except (ValueError, json.JSONDecodeError) as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
 

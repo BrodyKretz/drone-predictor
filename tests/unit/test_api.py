@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from scipy.io import wavfile
 
-from augur.api import identify_from_upload, predict_from_uploads, reference_info
+from augur.api import MAX_MC_SAMPLES, identify_from_upload, predict_from_uploads, reference_info
 from augur.physics.simulator import DroneSpec, FlightCondition, synth_waveform
 
 
@@ -27,6 +27,8 @@ def _wav_bytes(rpm: float = 12000.0, seed: int = 0) -> bytes:
 
 VERBAL = json.dumps({"num_motors": 4, "prop_diameter_inch": 5.0, "blade_count": 2,
                      "drone_class": "racing"})
+NON_OBJECT_JSON = ["[1, 2]", "null"]
+BAD_SAMPLE_COUNTS = [0, MAX_MC_SAMPLES + 1, True, 2000.0]
 
 
 def test_helper_audio_plus_verbal():
@@ -103,6 +105,41 @@ def test_reference_info_rejects_bad_sample_count():
         reference_info(True)
 
 
+@pytest.mark.parametrize("raw", [b"RIFF", b"RIFF\x04\x00\x00\x00WAVE"])
+def test_identify_helper_rejects_truncated_wav(raw):
+    with pytest.raises(ValueError, match="not a valid WAV file"):
+        identify_from_upload(raw, n=2000)
+
+
+@pytest.mark.parametrize("spec", NON_OBJECT_JSON)
+def test_identify_helper_rejects_non_object_spec(spec):
+    with pytest.raises(ValueError, match="spec must be a JSON object"):
+        identify_from_upload(_wav_bytes(), spec, n=2000)
+
+
+@pytest.mark.parametrize("verbal", NON_OBJECT_JSON)
+def test_helper_rejects_non_object_verbal(verbal):
+    with pytest.raises(ValueError, match="verbal spec must be a JSON object"):
+        predict_from_uploads(None, verbal, n=2000)
+
+
+@pytest.mark.parametrize("n", BAD_SAMPLE_COUNTS)
+def test_identify_helper_rejects_bad_sample_count(n):
+    with pytest.raises(ValueError, match=f"samples must be between 1 and {MAX_MC_SAMPLES}"):
+        identify_from_upload(_wav_bytes(), n=n)
+
+
+@pytest.mark.parametrize("n", BAD_SAMPLE_COUNTS)
+def test_helper_rejects_bad_sample_count(n):
+    with pytest.raises(ValueError, match=f"samples must be between 1 and {MAX_MC_SAMPLES}"):
+        predict_from_uploads(None, VERBAL, n=n)
+
+
+def test_helpers_accept_the_maximum_sample_count():
+    assert identify_from_upload(_wav_bytes(), n=MAX_MC_SAMPLES).status == "ok"
+    assert "rpm" in predict_from_uploads(None, VERBAL, n=MAX_MC_SAMPLES).variables
+
+
 # --- HTTP layer: skipped unless the serve extra is installed ----------------
 
 pytest.importorskip("fastapi", reason="serve extra not installed")
@@ -174,3 +211,35 @@ def test_reference_route(client):
     r = client.get("/reference")
     assert r.status_code == 200
     assert "mass_kg" in r.json()["bands"]
+
+
+@pytest.mark.parametrize("path", ["/identify", "/predict"])
+def test_route_truncated_wav_is_422(client, path):
+    r = client.post(path, files={"audio": ("a.wav", b"RIFF", "audio/wav")})
+    assert r.status_code == 422
+    assert "not a valid WAV file" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("path", ["/identify", "/predict"])
+def test_route_sample_count_over_the_cap_is_422(client, path):
+    r = client.post(path, files={"audio": ("w.wav", _wav_bytes(), "audio/wav")},
+                    data={"samples": str(MAX_MC_SAMPLES + 1)})
+    assert r.status_code == 422
+    assert "samples must be between" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("path", ["/identify", "/predict"])
+def test_route_oversized_audio_upload_is_413(client, monkeypatch, path):
+    wav = _wav_bytes()
+    monkeypatch.setattr("augur.api.MAX_UPLOAD_BYTES", len(wav) - 1)
+    r = client.post(path, files={"audio": ("w.wav", wav, "audio/wav")}, data={"samples": "2000"})
+    assert r.status_code == 413
+    assert r.json()["detail"] == "audio upload larger than 16 MiB"
+
+
+def test_identify_route_accepts_audio_at_the_upload_limit(client, monkeypatch):
+    wav = _wav_bytes()
+    monkeypatch.setattr("augur.api.MAX_UPLOAD_BYTES", len(wav))
+    r = client.post("/identify", files={"audio": ("w.wav", wav, "audio/wav")},
+                    data={"samples": "2000"})
+    assert r.status_code == 200, r.text
