@@ -28,6 +28,8 @@ from augur.types import IdentifyReport, PredictionReport, VerbalSpec
 
 MAX_MC_SAMPLES = 20000
 MAX_UPLOAD_BYTES = 16 * 1024 * 1024
+MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024
+_TOO_LARGE = (413, "request body too large")
 
 
 def _check_sample_count(n):
@@ -102,6 +104,62 @@ def reference_info(n: int = 4000) -> dict:
             "classes": {c: classes.get(c).get("description", "") for c in candidate_classes(None)}}
 
 
+class _RequestTooLarge(BaseException):
+    """Not an Exception: FastAPI turns any Exception raised while it reads the body into a 400."""
+
+
+def _declared_length_rejection(headers, limit):
+    """The (status, detail) to reject with, judged from Content-Length alone, or None."""
+    for name, value in headers:
+        if name == b"content-length":
+            if not value.isdigit():
+                return 400, "invalid Content-Length"
+            # 19+ digits is far past any limit, and int() refuses very long digit strings
+            if len(value) > 18 or int(value) > limit:
+                return _TOO_LARGE
+    return None
+
+
+async def _send_error(scope, receive, send, status_code, detail):
+    from starlette.responses import JSONResponse  # lazy: starlette comes with the serve extra
+
+    await JSONResponse({"detail": detail}, status_code=status_code)(scope, receive, send)
+
+
+class RequestSizeLimitMiddleware:
+    """Reject oversized request bodies before the framework parses them: from the
+    declared Content-Length when there is one, otherwise by counting bytes as they
+    stream in (chunked uploads have no Content-Length)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        limit = MAX_REQUEST_BYTES
+        rejection = _declared_length_rejection(scope.get("headers", []), limit)
+        if rejection:
+            await _send_error(scope, receive, send, *rejection)
+            return
+        received = 0
+
+        async def counting_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:
+                    raise _RequestTooLarge
+            return message
+
+        try:
+            await self.app(scope, counting_receive, send)
+        except _RequestTooLarge:
+            await _send_error(scope, receive, send, *_TOO_LARGE)
+
+
 def create_app():
     """Build the FastAPI app. Imported lazily so the package works without the
     `serve` extra installed."""
@@ -113,6 +171,8 @@ def create_app():
         description="Multimodal drone property inference — calibrated distributions.",
         version=__version__,
     )
+
+    app.add_middleware(RequestSizeLimitMiddleware)
 
     # Dev-permissive CORS so the local web UI (Vite, another port) can call the API.
     # Tighten allow_origins before any non-local deployment.
