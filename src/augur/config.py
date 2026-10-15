@@ -84,6 +84,10 @@ class Priors:
     def per_motor_rpm_spread(self) -> Band:
         return _band(self.raw["per_motor_rpm_spread_fraction"])
 
+    @property
+    def blade_count_options(self) -> list[int]:
+        return [int(b) for b in self.raw["blade_count_options"]]
+
 
 class Classes:
     def __init__(self, raw: dict):

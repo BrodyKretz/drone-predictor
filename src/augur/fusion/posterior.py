@@ -103,7 +103,7 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
     # Draw all unit uniforms up front, in a fixed order.
     u_motor = rng.random(n)
     u_diam = rng.random(n)
-    u_blade = rng.random(n)
+    _u_blade = rng.random(n)  # unused, but dropping it would shift every later draw
     u_pitch = rng.random(n)
     u_ct = rng.random(n)  # placeholder draws to keep stream aligned with db path
     u_cp = rng.random(n)
@@ -128,10 +128,6 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
         b = cls["prop_diameter_inch"]
         diameter_in = _scale_lh(u_diam, b["low"], b["high"])
     diameter_m = diameter_in * core.INCH_TO_M
-
-    # --- blade count (unused downstream here, but drawn for stream alignment) ---
-    if not (verbal and verbal.blade_count):
-        _ = np.array([2, 3])[np.floor(u_blade * 2).astype(int)]
 
     # --- pitch (via pitch/diameter ratio prior) ---
     _pitch = _scale(u_pitch, priors.pitch_to_diameter(class_name)) * diameter_in

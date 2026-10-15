@@ -1,4 +1,4 @@
-version: 2
+version: 3
 
 air_density_kg_m3: 1.225
 gravity_m_s2: 9.80665
@@ -45,3 +45,7 @@ component_mass_by_prop_inch: {}
 # Per-motor RPM spread (motors run slightly offset for control authority),
 # expressed as a fraction of mean RPM.
 per_motor_rpm_spread_fraction: { low: 0.0, high: 0.03 }
+
+# Blades per prop when the spec doesn't say. The audio measures blade-pass
+# frequency = blades * rev/s, so this choice decides how a tone maps to RPM.
+blade_count_options: [2, 3]
