@@ -61,6 +61,13 @@ class FusionInputs:
     flight_state: FlightState = FlightState.unknown
     image_observations: list[Observation] = field(default_factory=list)
     video_observations: list[Observation] = field(default_factory=list)
+    assume_hover_when_unknown: bool = True  # the default keeps /predict's outputs unchanged
+
+    def uses_hover_balance(self) -> bool:
+        """Whether sum(T) = m*g applies: in hover, or in an unknown state when allowed."""
+        if self.flight_state == FlightState.unknown:
+            return self.assume_hover_when_unknown
+        return self.flight_state == FlightState.hover
 
     def sources_present(self) -> list[str]:
         s = []
@@ -170,7 +177,7 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
         frame[sel] = core.min_frame_diagonal_m(diameter_m[sel], int(motor_count))
 
     # --- mass: hover force balance when in hover, else class prior ---
-    in_hover = inputs.flight_state in (FlightState.hover, FlightState.unknown)
+    in_hover = inputs.uses_hover_balance()
     b = cls["all_up_mass_kg"]
     mass_prior = _scale_lh(u_mass, b["low"], b["high"])
     if in_hover:
@@ -246,6 +253,7 @@ def _subset(inputs: FusionInputs, sources: set[str]) -> FusionInputs:
         flight_state=inputs.flight_state if "audio" in sources else FlightState.unknown,
         image_observations=inputs.image_observations if "image" in sources else [],
         video_observations=inputs.video_observations if "video" in sources else [],
+        assume_hover_when_unknown=inputs.assume_hover_when_unknown,
     )
 
 
@@ -321,7 +329,7 @@ def _assumptions(inputs: FusionInputs, priors: Priors) -> list[str]:
     eff = priors.efficiency
     ed = priors.energy_density("lipo")
     bmf = priors.battery_mass_fraction(cls)
-    used_hover = inputs.flight_state in (FlightState.hover, FlightState.unknown)
+    used_hover = inputs.uses_hover_balance()
     mass_line = (
         f"mass from hover force balance sum(T)=m*g (state={inputs.flight_state.value})"
         if used_hover else

@@ -32,7 +32,7 @@ def assess_flight_state(samples: np.ndarray, sample_rate: int,
     unknown = FlightStateEvidence(state=FlightState.unknown, steady_threshold=steady_threshold)
     freqs, spec_db = spectral.average_spectrum(samples, sample_rate, nperseg=nperseg)
     f0, conf, _ = rpm.detect_fundamental(freqs, spec_db)
-    if f0 <= 0 or conf < 0.3:
+    if f0 <= 0 or conf < rpm.MIN_COMB_CONFIDENCE:
         return unknown
 
     _, track = spectral.dominant_freq_track(samples, sample_rate, fmin=0.85 * f0,
