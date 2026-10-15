@@ -29,8 +29,8 @@ def _to_mono_float(data: np.ndarray) -> np.ndarray:
 def _read_wav(source: str | io.BytesIO) -> tuple[int, np.ndarray]:
     try:
         return wavfile.read(source)
-    except (struct.error, UnboundLocalError) as e:
-        # scipy lets these escape instead of raising ValueError when the RIFF data is truncated
+    except (struct.error, UnboundLocalError, ZeroDivisionError) as e:
+        # scipy lets these escape instead of raising ValueError on malformed RIFF headers
         raise ValueError(f"not a valid WAV file: {e}") from e
 
 

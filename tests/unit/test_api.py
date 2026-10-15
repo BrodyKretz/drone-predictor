@@ -1,6 +1,7 @@
 """API layer: the framework-free helper always runs; the HTTP routes run only
 when the optional `serve` extra (FastAPI + an httpx-backed TestClient) is present."""
 
+import asyncio
 import io
 import json
 
@@ -140,6 +141,14 @@ def test_helpers_accept_the_maximum_sample_count():
     assert "rpm" in predict_from_uploads(None, VERBAL, n=MAX_MC_SAMPLES).variables
 
 
+@pytest.mark.parametrize("channels", [0, 3])
+def test_identify_helper_rejects_wav_header_with_impossible_channel_count(channels):
+    raw = bytearray(_wav_bytes())
+    raw[22:24] = channels.to_bytes(2, "little")
+    with pytest.raises(ValueError, match="not a valid WAV file"):
+        identify_from_upload(bytes(raw), n=2000)
+
+
 # --- HTTP layer: skipped unless the serve extra is installed ----------------
 
 pytest.importorskip("fastapi", reason="serve extra not installed")
@@ -147,7 +156,7 @@ pytest.importorskip("httpx", reason="TestClient needs httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from augur.api import create_app  # noqa: E402
+from augur.api import RequestSizeLimitMiddleware, create_app  # noqa: E402
 
 
 @pytest.fixture
@@ -243,3 +252,104 @@ def test_identify_route_accepts_audio_at_the_upload_limit(client, monkeypatch):
     r = client.post("/identify", files={"audio": ("w.wav", wav, "audio/wav")},
                     data={"samples": "2000"})
     assert r.status_code == 200, r.text
+
+
+def _run_middleware(inner_app, headers, messages=(), scope_type="http"):
+    sent = []
+    pending = list(messages)
+
+    async def receive():
+        return pending.pop(0)
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {"type": scope_type, "headers": headers}
+    asyncio.run(RequestSizeLimitMiddleware(inner_app)(scope, receive, send))
+    return sent
+
+
+@pytest.mark.parametrize("declared_length", [b"5000", b"9" * 5000],
+                         ids=["just-over", "5000-digits"])
+def test_size_limit_rejects_declared_oversize_before_reading(monkeypatch, declared_length):
+    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
+
+    async def inner_app(scope, receive, send):
+        raise AssertionError("the app should never run")
+
+    sent = _run_middleware(inner_app, [(b"content-length", declared_length)])
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 413
+
+
+@pytest.mark.parametrize("chunk_sizes, is_rejected", [([400, 400, 200], False),
+                                                      ([400, 400, 201], True)])
+def test_size_limit_counts_streamed_bytes(monkeypatch, chunk_sizes, is_rejected):
+    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
+    messages = [{"type": "http.request", "body": b"x" * size, "more_body": i < len(chunk_sizes) - 1}
+                for i, size in enumerate(chunk_sizes)]
+
+    async def draining_app(scope, receive, send):
+        while (await receive())["more_body"]:
+            pass
+
+    sent = _run_middleware(draining_app, [], messages)
+    assert [m["status"] for m in sent if m["type"] == "http.response.start"] == (
+        [413] if is_rejected else [])
+
+
+@pytest.mark.parametrize("path, field", [("/identify", "audio"), ("/predict", "audio"),
+                                         ("/predict", "verbal")])
+def test_route_request_body_over_the_limit_is_413(client, monkeypatch, path, field):
+    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
+    r = client.post(path, files={field: ("f.bin", b"x" * 2000, "application/octet-stream")},
+                    headers={"origin": "http://localhost:5173"})
+    assert r.status_code == 413
+    assert r.json()["detail"] == "request body too large"
+    assert r.headers["access-control-allow-origin"] == "*"
+
+
+def test_route_request_at_the_size_limit_is_accepted(client, monkeypatch):
+    request = client.build_request("POST", "/identify",
+                                   files={"audio": ("w.wav", _wav_bytes(), "audio/wav")},
+                                   data={"samples": "2000"})
+    request_bytes = int(request.headers["content-length"])
+    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", request_bytes - 1)
+    assert client.send(request).status_code == 413
+    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", request_bytes)
+    assert client.send(request).status_code == 200
+
+
+def test_route_chunked_body_over_the_limit_is_413(client, monkeypatch):
+    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
+
+    def chunked_upload():
+        yield b'--x\r\nContent-Disposition: form-data; name="audio"; filename="a.wav"\r\n\r\n'
+        for _ in range(20):
+            yield b"A" * 100
+
+    r = client.post("/identify", content=chunked_upload(),
+                    headers={"content-type": "multipart/form-data; boundary=x"})
+    assert r.status_code == 413
+    assert r.json()["detail"] == "request body too large"
+
+
+@pytest.mark.parametrize("content_length", ["abc", "-1", "1.5"])
+def test_route_malformed_content_length_is_400(client, content_length):
+    r = client.post("/identify", content=b"x", headers={"content-length": content_length})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "invalid Content-Length"
+
+
+@pytest.mark.parametrize("scope_type", ["lifespan", "websocket"])
+def test_size_limit_only_applies_to_http(monkeypatch, scope_type):
+    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
+    calls = []
+
+    async def inner_app(scope, receive, send):
+        calls.append(scope["type"])
+
+    sent = _run_middleware(inner_app, [(b"content-length", b"5000")], scope_type=scope_type)
+    assert calls == [scope_type]
+    assert sent == []
+
