@@ -31,13 +31,21 @@ export function prettyName(key) {
   return PRETTY[key] || key;
 }
 
+export function trimZeros(text) {
+  return text.includes(".") && !text.includes("e") ? text.replace(/\.?0+$/, "") : text;
+}
+
 export function fmt(x) {
-  if (x === null || x === undefined || Number.isNaN(x)) return "—";
+  if (x === null || x === undefined || !Number.isFinite(x)) return "—";
   const a = Math.abs(x);
-  if (a !== 0 && (a >= 10000 || a < 0.01)) return x.toExponential(2);
+  if (a >= 1e6) return trimZeros((x / 1e6).toPrecision(3)) + "M";
+  if (a >= 1e4) return trimZeros((x / 1e3).toPrecision(3)) + "k";
+  if (a >= 1000) return Math.round(x).toLocaleString("en-US");
   if (a >= 100) return x.toFixed(0);
+  if (a >= 10) return x.toFixed(1);
   if (a >= 1) return x.toFixed(2);
-  return x.toFixed(3);
+  if (a === 0) return "0";
+  return trimZeros(x.toPrecision(2));
 }
 
 export function relativeWidth(v) {
@@ -68,4 +76,31 @@ export function sortedVariableKeys(variables) {
     if (ib === -1) return -1;
     return ia - ib;
   });
+}
+
+export function fmtK(x) {
+  return Math.abs(x) >= 1000 ? trimZeros((x / 1000).toPrecision(3)) + "k" : fmt(x);
+}
+
+export function fmtRange(lo, hi) {
+  const mid = Math.abs((lo + hi) / 2) || 1;
+  const full = (v) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-US") : fmt(v));
+  return (hi - lo) / mid < 0.1 ? `${full(lo)}–${full(hi)}` : `${fmt(lo)}–${fmt(hi)}`;
+}
+
+const DISPLAY = { endurance_s: { factor: 1 / 60, unit: "min" } };
+
+export function displayFactor(key) {
+  return DISPLAY[key] ? DISPLAY[key].factor : 1;
+}
+
+export function displayUnit(key, unit) {
+  return DISPLAY[key] ? DISPLAY[key].unit : (unit || "").replace("^2", "²");
+}
+
+export function confidenceWord(p) {
+  if (p >= 0.8) return "Confident";
+  if (p >= 0.6) return "Likely";
+  if (p >= 0.4) return "Leaning";
+  return "Unsure";
 }
