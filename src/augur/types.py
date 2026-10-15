@@ -211,3 +211,34 @@ class PredictionReport(BaseModel):
     inputs_used: list[str] = Field(default_factory=list)
     config_version: int | None = None
     notes: list[str] = Field(default_factory=list)
+
+
+class Harmonic(BaseModel):
+    """One tooth of the blade-pass comb: where it should be, and the detected
+    peak that matched it (None when nothing matched within tolerance)."""
+
+    order: int
+    expected_hz: float
+    matched_hz: float | None = None
+
+
+class FlightStateEvidence(BaseModel):
+    """The flight-state label plus the measurements behind it, so a reader can
+    see how close the call was. pitch_* are None when no stable tone was found."""
+
+    state: FlightState
+    pitch_variation: float | None = None
+    pitch_drift: float | None = None
+    steady_threshold: float
+
+
+class AcousticsDiagnostics(BaseModel):
+    """What the audio front-end saw: a display spectrum (dB relative to its peak),
+    the harmonic comb, and the flight-state evidence."""
+
+    spectrum_freq_hz: list[float]
+    spectrum_db: list[float]
+    fundamental_hz: float | None = None
+    harmonics: list[Harmonic] = Field(default_factory=list)
+    comb_confidence: float
+    flight_state: FlightStateEvidence
