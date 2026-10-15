@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -55,6 +56,11 @@ def main():
     parser = argparse.ArgumentParser(description="Generate the web UI's demo clips.")
     parser.add_argument("--duration", type=float, default=8.0, help="clip length in seconds")
     args = parser.parse_args()
+    if not math.isfinite(args.duration) or args.duration < 2.0:
+        parser.error(
+            "--duration must be a finite number of seconds, at least 2.0 "
+            "(the live analysis needs 88200 samples)"
+        )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     manifest = []
