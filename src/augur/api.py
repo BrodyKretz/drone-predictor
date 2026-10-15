@@ -13,11 +13,18 @@ the locally-imported `UploadFile` into an unresolvable forward reference.
 
 import json
 import tempfile
+from functools import cache
 from pathlib import Path
 
+import numpy as np
+
 from augur import __version__
+from augur.audio import spectral
+from augur.config import load_classes
+from augur.fusion.identify import candidate_classes, identify
+from augur.fusion.posterior import FusionInputs, fuse_distributions
 from augur.pipeline import predict
-from augur.types import PredictionReport, VerbalSpec
+from augur.types import IdentifyReport, PredictionReport, VerbalSpec
 
 
 def predict_from_uploads(
@@ -51,6 +58,30 @@ def predict_from_uploads(
             verbal_path.write_text(json.dumps(data))
 
         return predict(audio=audio_path, verbal=verbal_path, n=n, seed=seed)
+
+
+def identify_from_upload(audio_bytes: bytes, spec_json: str | bytes | None = None,
+                         n: int = 4000, seed: int = 0) -> IdentifyReport:
+    """Identify the drone class from one in-memory WAV window (the live UI sends
+    the latest few seconds). Raises ValueError on non-WAV or too-short audio."""
+    if not isinstance(audio_bytes, (bytes, bytearray)):
+        raise ValueError(f"audio_bytes must be bytes, got {type(audio_bytes).__name__}")
+    samples, sample_rate = spectral.read_wav_bytes(audio_bytes)
+    verbal = VerbalSpec(**json.loads(spec_json)) if spec_json else None
+    return identify(samples, sample_rate, verbal, n=n, seed=seed)
+
+
+@cache
+def reference_info(n: int = 4000) -> dict:
+    """The no-input 99% band per variable (the UI's display scale) and the class
+    descriptions from classes.yaml."""
+    if isinstance(n, bool) or not isinstance(n, (int, np.integer)) or n < 1:
+        raise ValueError(f"n must be a positive integer, got {n!r}")
+    out = fuse_distributions(FusionInputs(assume_hover_when_unknown=False), n=n, seed=0)
+    bands = {v: [float(x) for x in np.quantile(d.samples, [0.005, 0.995])] for v, d in out.items()}
+    classes = load_classes()
+    return {"bands": bands,
+            "classes": {c: classes.get(c).get("description", "") for c in candidate_classes(None)}}
 
 
 def create_app():
@@ -97,6 +128,22 @@ def create_app():
             return predict_from_uploads(audio_bytes, verbal_payload, n=samples, seed=seed)
         except (ValueError, json.JSONDecodeError) as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
+
+    @app.post("/identify", response_model=IdentifyReport)
+    async def identify_route(
+        audio: UploadFile = File(..., description="WAV window, mono or stereo"),
+        spec: str | None = Form(default=None, description="Known facts as JSON (optional)"),
+        samples: int = Form(default=4000),
+        seed: int = Form(default=0),
+    ):
+        try:
+            return identify_from_upload(await audio.read(), spec, n=samples, seed=seed)
+        except (ValueError, json.JSONDecodeError) as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
+    @app.get("/reference")
+    def reference():
+        return reference_info()
 
     return app
 

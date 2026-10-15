@@ -6,6 +6,7 @@ is an optional extra for richer order-tracking later.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import numpy as np
@@ -13,17 +14,28 @@ from scipy import signal as sps
 from scipy.io import wavfile
 
 
-def load_wav(path: str | Path) -> tuple[np.ndarray, int]:
-    """Load a WAV as mono float64 in [-1, 1]. Returns (samples, sample_rate)."""
-    sr, data = wavfile.read(str(path))
+def _to_mono_float(data: np.ndarray) -> np.ndarray:
     data = np.asarray(data)
     if data.ndim > 1:
         data = data.mean(axis=1)
     data = data.astype(np.float64)
     # Normalise integer PCM to [-1, 1].
-    if np.issubdtype(np.asarray(data).dtype, np.floating) and np.max(np.abs(data)) > 1.0:
+    if data.size and np.max(np.abs(data)) > 1.0:
         data = data / np.max(np.abs(data))
-    return data, int(sr)
+    return data
+
+
+def load_wav(path: str | Path) -> tuple[np.ndarray, int]:
+    """Load a WAV as mono float64 in [-1, 1]. Returns (samples, sample_rate)."""
+    sr, data = wavfile.read(str(path))
+    return _to_mono_float(data), int(sr)
+
+
+def read_wav_bytes(raw: bytes) -> tuple[np.ndarray, int]:
+    """load_wav for an in-memory WAV (an HTTP upload). Raises ValueError if the
+    bytes aren't a WAV."""
+    sr, data = wavfile.read(io.BytesIO(raw))
+    return _to_mono_float(data), int(sr)
 
 
 def spectrogram(samples: np.ndarray, sample_rate: int, nperseg: int = 8192, overlap: float = 0.5):
