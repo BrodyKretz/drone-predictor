@@ -120,7 +120,6 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
     else:
         choices = np.array(cls["num_motors"])
         num_motors = choices[np.floor(u_motor * len(choices)).astype(int)]
-    num_motors_mode = int(np.bincount(num_motors).argmax())
 
     # --- prop diameter (inches) ---
     if verbal and verbal.prop_diameter_inch:
@@ -167,8 +166,12 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
     t_total = t_per * num_motors
     p_shaft = core.shaft_power_per_motor(rpm, diameter_m, c_p, rho) * num_motors
     p_elec = p_shaft / efficiency
-    disk = core.disk_loading(t_total, num_motors_mode, diameter_m)
-    frame = core.min_frame_diagonal_m(diameter_m, num_motors_mode)
+    disk = np.empty(n)
+    frame = np.empty(n)
+    for motor_count in np.unique(num_motors):
+        sel = num_motors == motor_count
+        disk[sel] = core.disk_loading(t_total[sel], int(motor_count), diameter_m[sel])
+        frame[sel] = core.min_frame_diagonal_m(diameter_m[sel], int(motor_count))
 
     # --- mass: hover force balance when in hover, else class prior ---
     in_hover = inputs.flight_state in (FlightState.hover, FlightState.unknown)
