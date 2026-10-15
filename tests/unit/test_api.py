@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from scipy.io import wavfile
 
-from augur.api import predict_from_uploads
+from augur.api import identify_from_upload, predict_from_uploads, reference_info
 from augur.physics.simulator import DroneSpec, FlightCondition, synth_waveform
 
 
@@ -50,6 +50,57 @@ def test_helper_requires_an_input():
 def test_helper_rejects_malformed_verbal():
     with pytest.raises(json.JSONDecodeError):
         predict_from_uploads(None, "{not json")
+
+
+def test_identify_helper_ranks_classes():
+    report = identify_from_upload(_wav_bytes(), n=2000)
+    assert report.status == "ok"
+    assert sum(c.probability for c in report.classes) == pytest.approx(1.0)
+    assert report.acoustics.fundamental_hz is not None
+
+
+def test_identify_helper_accepts_stereo_float_wav():
+    rate, mono = wavfile.read(io.BytesIO(_wav_bytes()))
+    stereo = (np.stack([mono, mono], axis=1) / 32767).astype(np.float32)
+    buf = io.BytesIO()
+    wavfile.write(buf, rate, stereo)
+    assert identify_from_upload(buf.getvalue(), n=2000).status == "ok"
+
+
+def test_identify_helper_rejects_non_wav():
+    with pytest.raises(ValueError):
+        identify_from_upload(b"ID3\x04\x00\x00 not a wav", n=2000)
+
+
+def test_identify_helper_rejects_too_short_audio():
+    rate, mono = wavfile.read(io.BytesIO(_wav_bytes()))
+    buf = io.BytesIO()
+    wavfile.write(buf, rate, mono[: rate // 10])
+    with pytest.raises(ValueError, match="at least"):
+        identify_from_upload(buf.getvalue(), n=2000)
+
+
+def test_identify_helper_rejects_non_bytes_audio():
+    with pytest.raises(ValueError, match="audio_bytes"):
+        identify_from_upload("not a wav", n=2000)
+    with pytest.raises(ValueError, match="audio_bytes"):
+        identify_from_upload(None, n=2000)
+
+
+def test_reference_info_bands_and_classes():
+    info = reference_info()
+    low, high = info["bands"]["mass_kg"]
+    assert 0 < low < high
+    assert set(info["classes"]) == {"racing", "cinematic", "survey", "military"}
+
+
+def test_reference_info_rejects_bad_sample_count():
+    with pytest.raises(ValueError, match="positive integer"):
+        reference_info(0)
+    with pytest.raises(ValueError, match="positive integer"):
+        reference_info(2000.0)
+    with pytest.raises(ValueError, match="positive integer"):
+        reference_info(True)
 
 
 # --- HTTP layer: skipped unless the serve extra is installed ----------------
@@ -103,3 +154,23 @@ def test_predict_route_no_input_is_422(client):
 def test_predict_route_bad_verbal_is_422(client):
     r = client.post("/predict", data={"verbal_json": "{nope", "samples": "2000"})
     assert r.status_code == 422
+
+
+def test_identify_route(client):
+    r = client.post("/identify", files={"audio": ("w.wav", _wav_bytes(), "audio/wav")},
+                    data={"samples": "2000"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["classes"][0]["name"] in {"racing", "cinematic", "survey", "military"}
+    assert len(body["acoustics"]["spectrum_freq_hz"]) == len(body["acoustics"]["spectrum_db"])
+
+
+def test_identify_route_non_wav_is_422(client):
+    r = client.post("/identify", files={"audio": ("a.mp3", b"ID3\x04 nope", "audio/mpeg")})
+    assert r.status_code == 422
+
+
+def test_reference_route(client):
+    r = client.get("/reference")
+    assert r.status_code == 200
+    assert "mass_kg" in r.json()["bands"]
