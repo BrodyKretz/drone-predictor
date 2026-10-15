@@ -35,6 +35,9 @@ from augur.types import (
 MIN_COMB_CONFIDENCE = 0.3
 MAINS_HZ = (50.0, 60.0, 100.0, 120.0)
 MAINS_TOLERANCE = 0.015
+# Shorter windows average too few spectrogram frames, so white noise shows
+# spurious harmonic combs and slips past the no-tone gate.
+MIN_WINDOW_SECONDS = 2.0
 
 
 def candidate_classes(verbal: VerbalSpec | None) -> list[str]:
@@ -76,6 +79,12 @@ def _summaries(draws: dict[str, np.ndarray]) -> dict[str, VariableSummary]:
     return {v: Distribution(a, unit=OUTPUT_UNITS[v] or None).to_summary() for v, a in draws.items()}
 
 
+def _prior_width_estimates(verbal: VerbalSpec | None, n: int,
+                           seed: int) -> dict[str, VariableSummary]:
+    out = fuse_distributions(FusionInputs(verbal=verbal), n=n, seed=seed)
+    return _summaries({v: d.samples for v, d in out.items()})
+
+
 def _ranked_classes(weights: dict[str, float]) -> list[ClassProbability]:
     total = sum(weights.values())
     probs = {c: (w / total if total > 0 else 1.0 / len(weights)) for c, w in weights.items()}
@@ -90,12 +99,24 @@ def _ranked_blades(weights: dict[int, float]) -> list[BladeProbability]:
                   key=lambda x: -x.probability)
 
 
+def _sample_counts(probabilities: list[float], n: int) -> list[int]:
+    """Largest-remainder split of n samples: floor each share, then one more to
+    each of the largest fractional remainders (ties go to the earlier entry)."""
+    shares = np.asarray(probabilities) * n
+    counts = np.floor(shares).astype(int)
+    leftover = n - int(counts.sum())
+    counts[np.argsort(counts - shares, kind="stable")[:leftover]] += 1
+    return counts.tolist()
+
+
 def identify(samples: np.ndarray, sample_rate: int, verbal: VerbalSpec | None = None,
              n: int = 4000, seed: int = 0) -> IdentifyReport:
     if samples.size == 0:
         raise ValueError("samples is empty: need at least one audio sample")
     if sample_rate <= 0:
         raise ValueError(f"sample_rate must be positive, got {sample_rate}")
+    if samples.size < MIN_WINDOW_SECONDS * sample_rate:
+        raise ValueError(f"need at least {MIN_WINDOW_SECONDS} s of audio")
     if n < 1:
         raise ValueError(f"n must be at least 1, got {n}")
     evidence = hover.assess_flight_state(samples, sample_rate)
@@ -108,15 +129,22 @@ def identify(samples: np.ndarray, sample_rate: int, verbal: VerbalSpec | None = 
                   acoustics=diagnostics.build_acoustics(freqs, spec_db, f0, peaks, conf, evidence),
                   config_version=load_priors().version)
     notes = mains_hum_note(f0, float(freqs[1] - freqs[0]))
+    ruled_out = [ClassProbability(name=c, probability=0.0) for c in classes]
+    prior_blades = _ranked_blades(dict.fromkeys(blades, 1.0))
 
-    if f0 <= 0 or conf < MIN_COMB_CONFIDENCE:
-        out = fuse_distributions(FusionInputs(verbal=verbal), n=n, seed=seed)
+    has_tone = f0 > 0 and conf >= MIN_COMB_CONFIDENCE
+    if not has_tone:
         notes.append("No steady blade-pass tone yet, so there is nothing to classify. "
                      "Estimates are prior-width.")
+    if sum(facts.values()) == 0:
+        notes.append("The facts you gave don't match any known class in config/classes.yaml.")
+        return IdentifyReport(**common, status="no_class_fits", classes=ruled_out,
+                              blades=prior_blades,
+                              variables=_prior_width_estimates(verbal, n, seed), notes=notes)
+    if not has_tone:
         return IdentifyReport(**common, status="no_tone", classes=_ranked_classes(facts),
-                              blades=_ranked_blades(dict.fromkeys(blades, 1.0)),
-                              variables=_summaries({v: d.samples for v, d in out.items()}),
-                              notes=notes)
+                              blades=prior_blades,
+                              variables=_prior_width_estimates(verbal, n, seed), notes=notes)
 
     hovering = evidence.state == FlightState.hover
     components = []
@@ -140,24 +168,21 @@ def identify(samples: np.ndarray, sample_rate: int, verbal: VerbalSpec | None = 
 
     total = sum(strength for _, _, strength, _, _ in components)
     if total <= 0:
-        out = fuse_distributions(FusionInputs(verbal=verbal), n=n, seed=seed)
         notes.append("The tone doesn't fit any known class in hover. It may be a drone "
                      "type outside config/classes.yaml.")
-        return IdentifyReport(**common, status="no_class_fits",
-                              classes=[ClassProbability(name=c, probability=0.0) for c in classes],
-                              blades=_ranked_blades(dict.fromkeys(blades, 1.0)),
-                              variables=_summaries({v: d.samples for v, d in out.items()}),
-                              notes=notes)
+        return IdentifyReport(**common, status="no_class_fits", classes=ruled_out,
+                              blades=prior_blades,
+                              variables=_prior_width_estimates(verbal, n, seed), notes=notes)
 
+    probabilities = [strength / total for _, _, strength, _, _ in components]
+    counts = _sample_counts(probabilities, n)
     rng = np.random.default_rng(seed + 1)
     parts: dict[str, list[np.ndarray]] = {v: [] for v in OUTPUT_UNITS}
     class_w = dict.fromkeys(classes, 0.0)
     blade_w = dict.fromkeys(blades, 0.0)
-    for c, b, strength, weights, draws in components:
-        p = strength / total
+    for (c, b, _, weights, draws), p, k in zip(components, probabilities, counts, strict=True):
         class_w[c] += p
         blade_w[b] += p
-        k = int(round(p * n))
         if k == 0:
             continue
         idx = rng.choice(n, size=k, replace=True, p=weights / weights.sum())
