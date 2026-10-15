@@ -20,6 +20,7 @@ from augur.types import Distribution
 
 N_HARMONICS = 6
 DETECTION_FMAX_HZ = 5000.0
+MIN_COMB_CONFIDENCE = 0.3
 
 
 def comb_tolerance_hz(freqs: np.ndarray) -> float:

@@ -32,12 +32,10 @@ from augur.types import (
     VerbalSpec,
 )
 
-MIN_COMB_CONFIDENCE = 0.3
 MAINS_HZ = (50.0, 60.0, 100.0, 120.0)
 MAINS_TOLERANCE = 0.015
-# Shorter windows average too few spectrogram frames, so white noise shows
-# spurious harmonic combs and slips past the no-tone gate.
-MIN_WINDOW_SECONDS = 2.0
+# Noise rejection depends on how many 8192-sample STFT frames get averaged, not on seconds.
+MIN_WINDOW_SAMPLES = 88200
 
 
 def candidate_classes(verbal: VerbalSpec | None) -> list[str]:
@@ -81,7 +79,8 @@ def _summaries(draws: dict[str, np.ndarray]) -> dict[str, VariableSummary]:
 
 def _prior_width_estimates(verbal: VerbalSpec | None, n: int,
                            seed: int) -> dict[str, VariableSummary]:
-    out = fuse_distributions(FusionInputs(verbal=verbal), n=n, seed=seed)
+    out = fuse_distributions(FusionInputs(verbal=verbal, assume_hover_when_unknown=False),
+                             n=n, seed=seed)
     return _summaries({v: d.samples for v, d in out.items()})
 
 
@@ -111,28 +110,36 @@ def _sample_counts(probabilities: list[float], n: int) -> list[int]:
 
 def identify(samples: np.ndarray, sample_rate: int, verbal: VerbalSpec | None = None,
              n: int = 4000, seed: int = 0) -> IdentifyReport:
+    if not isinstance(samples, np.ndarray):
+        raise ValueError(f"samples must be a numpy array, got {type(samples).__name__}")
+    if samples.ndim != 1:
+        raise ValueError(f"samples must be 1-D (mono), got shape {samples.shape}")
     if samples.size == 0:
         raise ValueError("samples is empty: need at least one audio sample")
     if sample_rate <= 0:
         raise ValueError(f"sample_rate must be positive, got {sample_rate}")
-    if samples.size < MIN_WINDOW_SECONDS * sample_rate:
-        raise ValueError(f"need at least {MIN_WINDOW_SECONDS} s of audio")
+    if samples.size < MIN_WINDOW_SAMPLES:
+        raise ValueError(f"need at least {MIN_WINDOW_SAMPLES} samples of audio "
+                         f"({MIN_WINDOW_SAMPLES / sample_rate:.1f} s at {sample_rate} Hz)")
+    if isinstance(n, bool) or not isinstance(n, (int, np.integer)):
+        raise ValueError(f"n must be an integer, got {n!r}")
     if n < 1:
         raise ValueError(f"n must be at least 1, got {n}")
     evidence = hover.assess_flight_state(samples, sample_rate)
     freqs, spec_db = spectral.average_spectrum(samples, sample_rate)
     f0, conf, peaks = rpm.detect_fundamental(freqs, spec_db)
+    has_tone = f0 > 0 and conf >= rpm.MIN_COMB_CONFIDENCE
     class_cfg = load_classes()
     classes, blades = candidate_classes(verbal), candidate_blades(verbal)
     facts = {c: fact_likelihood(class_cfg.get(c), verbal) for c in classes}
+    acoustics = diagnostics.build_acoustics(freqs, spec_db, f0 if has_tone else 0.0, peaks, conf,
+                                            evidence)
     common = dict(duration_s=samples.size / sample_rate, sample_rate=sample_rate,
-                  acoustics=diagnostics.build_acoustics(freqs, spec_db, f0, peaks, conf, evidence),
-                  config_version=load_priors().version)
-    notes = mains_hum_note(f0, float(freqs[1] - freqs[0]))
+                  acoustics=acoustics, config_version=load_priors().version)
+    notes = mains_hum_note(f0, float(freqs[1] - freqs[0])) if has_tone else []
     ruled_out = [ClassProbability(name=c, probability=0.0) for c in classes]
     prior_blades = _ranked_blades(dict.fromkeys(blades, 1.0))
 
-    has_tone = f0 > 0 and conf >= MIN_COMB_CONFIDENCE
     if not has_tone:
         notes.append("No steady blade-pass tone yet, so there is nothing to classify. "
                      "Estimates are prior-width.")
@@ -190,8 +197,9 @@ def identify(samples: np.ndarray, sample_rate: int, verbal: VerbalSpec | None = 
             parts[v].append(draws[v][idx])
 
     if not hovering:
-        notes.append(f"Flight state is {evidence.state.value}, not hover: the class guess "
-                     "stays at the prior and mass comes from the class prior.")
+        notes.append(f"Flight state is {evidence.state.value}, not hover: the audio can't "
+                     "inform the class guess (only facts you gave can), and mass comes from "
+                     "the class prior.")
     return IdentifyReport(**common, status="ok" if hovering else "not_hovering",
                           classes=_ranked_classes(class_w), blades=_ranked_blades(blade_w),
                           variables=_summaries({v: np.concatenate(p) for v, p in parts.items()}),
