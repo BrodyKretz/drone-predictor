@@ -17,7 +17,13 @@ def max_pool_spectrum(freqs: np.ndarray, spec_db: np.ndarray, f_max_hz: float,
     """Crop to [0, f_max_hz] and keep each group's loudest bin at its true
     frequency, so harmonic peaks survive downsampling. dB is relative to the
     peak (max 0) and floored at SPECTRUM_DB_FLOOR."""
+    if freqs.size != spec_db.size:
+        raise ValueError(f"freqs and spec_db differ in length: {freqs.size} vs {spec_db.size}")
+    if bins < 1:
+        raise ValueError(f"bins must be at least 1, got {bins}")
     window = freqs <= f_max_hz
+    if not window.any():
+        raise ValueError(f"no spectrum bin at or below f_max_hz={f_max_hz}")
     f, d = freqs[window], spec_db[window]
     if f.size > bins:
         groups = np.array_split(np.arange(f.size), bins)

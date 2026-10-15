@@ -94,3 +94,34 @@ def test_build_acoustics_without_tone():
                                      hover.assess_flight_state(noise, 44100))
     assert ac.fundamental_hz is None and ac.harmonics == []
     assert ac.spectrum_freq_hz[-1] <= rpm.DETECTION_FMAX_HZ
+
+
+def test_comb_tolerance_rejects_fewer_than_two_bins():
+    with pytest.raises(ValueError, match="bins"):
+        rpm.comb_tolerance_hz(np.array([0.0]))
+
+
+def test_match_harmonics_rejects_bad_arguments():
+    peaks = np.array([100.0, 200.0])
+    with pytest.raises(ValueError, match="n_harmonics"):
+        rpm.match_harmonics(100.0, peaks, 0, tol_hz=5.0)
+    with pytest.raises(ValueError, match="tol_hz"):
+        rpm.match_harmonics(100.0, peaks, 4, tol_hz=-1.0)
+
+
+def test_assess_flight_state_rejects_bad_arguments():
+    with pytest.raises(ValueError, match="sample_rate"):
+        hover.assess_flight_state(_noise(), 0)
+    with pytest.raises(ValueError, match="steady_threshold"):
+        hover.assess_flight_state(_noise(), 44100, steady_threshold=0.0)
+
+
+def test_max_pool_rejects_bad_arguments():
+    freqs = np.linspace(0.0, 1000.0, 101)
+    spec_db = -np.linspace(0.0, 50.0, 101)
+    with pytest.raises(ValueError, match="length"):
+        diagnostics.max_pool_spectrum(freqs, spec_db[:-1], f_max_hz=1000.0)
+    with pytest.raises(ValueError, match="bins"):
+        diagnostics.max_pool_spectrum(freqs, spec_db, f_max_hz=1000.0, bins=0)
+    with pytest.raises(ValueError, match="f_max_hz"):
+        diagnostics.max_pool_spectrum(freqs, spec_db, f_max_hz=-1.0)

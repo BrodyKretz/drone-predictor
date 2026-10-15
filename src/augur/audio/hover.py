@@ -25,6 +25,10 @@ def assess_flight_state(samples: np.ndarray, sample_rate: int,
     the fundamental track for the clip to count as steady hover. Per-motor control
     spread (a few percent) stays under this; a throttle ramp/climb exceeds it.
     """
+    if sample_rate <= 0:
+        raise ValueError(f"sample_rate must be positive, got {sample_rate}")
+    if steady_threshold <= 0:
+        raise ValueError(f"steady_threshold must be positive, got {steady_threshold}")
     unknown = FlightStateEvidence(state=FlightState.unknown, steady_threshold=steady_threshold)
     freqs, spec_db = spectral.average_spectrum(samples, sample_rate, nperseg=nperseg)
     f0, conf, _ = rpm.detect_fundamental(freqs, spec_db)
