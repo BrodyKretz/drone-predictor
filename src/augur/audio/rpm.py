@@ -24,12 +24,18 @@ DETECTION_FMAX_HZ = 5000.0
 
 def comb_tolerance_hz(freqs: np.ndarray) -> float:
     """How far a peak may sit from h*f0 and still count as that harmonic."""
+    if freqs.size < 2:
+        raise ValueError(f"freqs needs at least 2 bins to infer the bin width, got {freqs.size}")
     return max(3.0 * float(freqs[1] - freqs[0]), 5.0)
 
 
 def match_harmonics(fundamental: float, peaks: np.ndarray, n_harmonics: int,
                     tol_hz: float) -> list[float | None]:
     """For each of the first n_harmonics, the nearest peak within tol_hz, else None."""
+    if n_harmonics < 1:
+        raise ValueError(f"n_harmonics must be at least 1, got {n_harmonics}")
+    if tol_hz < 0:
+        raise ValueError(f"tol_hz must be non-negative, got {tol_hz}")
     matched: list[float | None] = []
     for h in range(1, n_harmonics + 1):
         target = fundamental * h
