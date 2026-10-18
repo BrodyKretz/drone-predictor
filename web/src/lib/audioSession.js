@@ -6,13 +6,20 @@ export const MIN_WINDOW_SAMPLES = 88200;
 export const TICK_MS = 600;
 const PLAYBACK_GAIN = 0.25;
 const MIC_BUFFER_SECONDS = 8;
+const RESUME_TIMEOUT_MS = 2000;
 
 let context = null;
 
 function audioContext() {
   if (!context) context = new AudioContext();
-  if (context.state === "suspended") context.resume();
   return context;
+}
+
+export function resumeAudio() {
+  const ctx = audioContext();
+  // resume() never settles while the autoplay policy blocks the context, so the wait is bounded.
+  const timeout = new Promise((resolve) => setTimeout(resolve, RESUME_TIMEOUT_MS));
+  return Promise.race([ctx.resume(), timeout]).then(() => ctx.state === "running");
 }
 
 export async function decodeFile(file) {
@@ -52,7 +59,7 @@ export function playBuffer(buffer, { onWindow, onEnd }) {
     if (finished) return;
     finished = true;
     clearInterval(timer);
-    onEnd(windowWav(mono, rate, endIndex));
+    onEnd(windowWav(mono, rate, endIndex), rate);
   };
   source.onended = () => finish(mono.length);
   source.start();
@@ -70,10 +77,19 @@ export function playBuffer(buffer, { onWindow, onEnd }) {
   };
 }
 
-export async function startMic({ onWindow }) {
+export async function startMic({ onWindow, onEnd }) {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
   });
+  try {
+    return micSession(stream, { onWindow, onEnd });
+  } catch (err) {
+    stream.getTracks().forEach((track) => track.stop());
+    throw err;
+  }
+}
+
+function micSession(stream, { onWindow, onEnd }) {
   const ctx = audioContext();
   const rate = Math.round(ctx.sampleRate);
   const keep = Math.max(MIC_BUFFER_SECONDS * rate, MIN_WINDOW_SAMPLES);
@@ -106,6 +122,7 @@ export async function startMic({ onWindow }) {
       processor.disconnect();
       input.disconnect();
       stream.getTracks().forEach((track) => track.stop());
+      onEnd(windowWav(ring, rate, ring.length), rate);
     },
   };
 }

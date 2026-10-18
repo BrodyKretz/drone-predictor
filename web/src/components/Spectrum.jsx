@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
 const HEIGHT = 170;
-const M = { left: 40, right: 12, top: 18, bottom: 22 };
+const M = { left: 40, right: 12, top: 24, bottom: 22 };
 
 function useWidth(ref) {
   const [width, setWidth] = useState(0);
@@ -75,8 +75,8 @@ function Plot({ acoustics, width }) {
           const hx = x(h.expected_hz);
           return (
             <g key={h.order}>
-              <line className="h-miss" x1={hx} x2={hx} y1={M.top - 2} y2={HEIGHT - M.bottom} />
-              <text className="h-miss-label" x={hx} y={M.top - 6} textAnchor="middle">{label}?</text>
+              <line className="h-miss" x1={hx} x2={hx} y1={M.top - 8} y2={HEIGHT - M.bottom} />
+              <text className="h-miss-label" x={hx} y={M.top - 12} textAnchor="middle">{label}?</text>
             </g>
           );
         }
@@ -84,9 +84,9 @@ function Plot({ acoustics, width }) {
         const hy = y(nearestDb(h.matched_hz));
         return (
           <g key={h.order}>
-            <line className="h-hit" x1={hx} x2={hx} y1={M.top - 2} y2={hy - 8} />
+            <line className="h-hit" x1={hx} x2={hx} y1={M.top - 8} y2={Math.max(hy - 8, M.top - 8)} />
             <path className="h-hit-mark" d={`M${hx} ${hy - 2}l-4 -6h8z`} />
-            <text className="h-hit-label" x={hx} y={M.top - 6} textAnchor="middle">{label}</text>
+            <text className="h-hit-label" x={hx} y={M.top - 12} textAnchor="middle">{label}</text>
           </g>
         );
       })}

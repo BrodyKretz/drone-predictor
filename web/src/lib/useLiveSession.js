@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { identify } from "../api.js";
-import { MIN_WINDOW_SAMPLES, decodeFile, decodeUrl, playBuffer, startMic } from "./audioSession.js";
+import {
+  MIN_WINDOW_SAMPLES, decodeFile, decodeUrl, playBuffer, resumeAudio, startMic,
+} from "./audioSession.js";
 
 const HISTORY_LENGTH = 40;
+const AUDIO_BLOCKED =
+  "Your browser blocked audio until you interact with the page. Click a sample or Choose file to start.";
 
 function knownSpec(known) {
   const spec = {};
@@ -27,18 +31,19 @@ export function useLiveSession(known) {
   const [error, setError] = useState(null);
   const session = useRef(null);
   const sessionId = useRef(0);
-  const inflight = useRef(false);
+  const inputRequest = useRef(0);
+  const inflightSession = useRef(null);
   const pendingFinal = useRef(null);
   const knownRef = useRef(known);
   knownRef.current = known;
 
   const analyze = useCallback(async function run(wav, id, final = false) {
     if (!wav || id !== sessionId.current) return;
-    if (inflight.current) {
+    if (inflightSession.current === id) {
       if (final) pendingFinal.current = { wav, id };
       return;
     }
-    inflight.current = true;
+    inflightSession.current = id;
     try {
       const report = await identify(wav, knownSpec(knownRef.current));
       if (id !== sessionId.current) return;
@@ -48,10 +53,12 @@ export function useLiveSession(known) {
     } catch (err) {
       if (id === sessionId.current) setError(`Analysis failed: ${err.message}`);
     } finally {
-      inflight.current = false;
-      const next = pendingFinal.current;
-      pendingFinal.current = null;
-      if (next) run(next.wav, next.id, true);
+      if (inflightSession.current === id) {
+        inflightSession.current = null;
+        const next = pendingFinal.current;
+        pendingFinal.current = null;
+        if (next) run(next.wav, next.id, true);
+      }
     }
   }, []);
 
@@ -68,44 +75,67 @@ export function useLiveSession(known) {
     return sessionId.current;
   }, []);
 
-  const play = useCallback((buffer, label, sampleId = null) => {
+  const endHandler = useCallback((id) => (wav, sampleRate) => {
+    if (id !== sessionId.current) return;
+    setMode("done");
+    if (wav) {
+      analyze(wav, id, true);
+    } else {
+      const seconds = (MIN_WINDOW_SAMPLES / sampleRate).toFixed(1);
+      setError(`Augur needs at least ${seconds} s of audio to identify a drone.`);
+    }
+  }, [analyze]);
+
+  const play = useCallback((buffer, label, sampleId) => {
     const id = begin("playing", { label, sampleId, duration: buffer.duration });
     session.current = playBuffer(buffer, {
       onWindow: (wav) => analyze(wav, id),
-      onEnd: (wav) => {
-        if (id !== sessionId.current) return;
-        setMode("done");
-        if (wav) {
-          analyze(wav, id, true);
-        } else {
-          const seconds = (MIN_WINDOW_SAMPLES / buffer.sampleRate).toFixed(1);
-          setError(`Augur needs at least ${seconds} s of audio to identify a drone.`);
-        }
-      },
+      onEnd: endHandler(id),
     });
-  }, [analyze, begin]);
+  }, [analyze, begin, endHandler]);
 
-  const playSample = useCallback(async (sample) => {
+  const playDecoded = useCallback(async ({ decode, decodeError, label, sampleId = null }) => {
+    const request = ++inputRequest.current;
+    const audioReady = resumeAudio();
+    let buffer;
     try {
-      play(await decodeUrl(`/templates/${sample.id}.wav`), `${sample.label} sample (simulated)`, sample.id);
+      buffer = await decode();
     } catch (err) {
-      setError(`Couldn't load the ${sample.label} sample: ${err.message}`);
+      if (request === inputRequest.current) setError(decodeError(err));
+      return;
     }
+    if (request !== inputRequest.current) return;
+    const running = await audioReady;
+    if (request !== inputRequest.current) return;
+    if (running) play(buffer, label, sampleId);
+    else setError(AUDIO_BLOCKED);
   }, [play]);
 
-  const playFile = useCallback(async (file) => {
-    try {
-      play(await decodeFile(file), file.name);
-    } catch {
-      setError(`Couldn't decode ${file.name}. Try a WAV, MP3 or OGG file.`);
-    }
-  }, [play]);
+  const playSample = useCallback((sample) => playDecoded({
+    decode: () => decodeUrl(`/templates/${sample.id}.wav`),
+    decodeError: (err) => `Couldn't load the ${sample.label} sample: ${err.message}`,
+    label: `${sample.label} sample (simulated)`,
+    sampleId: sample.id,
+  }), [playDecoded]);
+
+  const playFile = useCallback((file) => playDecoded({
+    decode: () => decodeFile(file),
+    decodeError: () => `Couldn't decode ${file.name}. Try a WAV, MP3 or OGG file.`,
+    label: file.name,
+  }), [playDecoded]);
 
   const record = useCallback(async () => {
+    const request = ++inputRequest.current;
+    const running = await resumeAudio();
+    if (request !== inputRequest.current) return;
+    if (!running) {
+      setError(AUDIO_BLOCKED);
+      return;
+    }
     const id = begin("recording", { label: "Microphone", sampleId: null, duration: 0 });
     let mic;
     try {
-      mic = await startMic({ onWindow: (wav) => analyze(wav, id) });
+      mic = await startMic({ onWindow: (wav) => analyze(wav, id), onEnd: endHandler(id) });
     } catch (err) {
       if (id === sessionId.current) {
         setMode("idle");
@@ -115,21 +145,31 @@ export function useLiveSession(known) {
     }
     if (id !== sessionId.current) mic.stop();
     else session.current = mic;
-  }, [analyze, begin]);
+  }, [analyze, begin, endHandler]);
 
   const stop = useCallback(() => {
-    if (!session.current) return;
-    session.current.stop();
-    setMode("done");
+    inputRequest.current += 1;
+    if (session.current) {
+      session.current.stop();
+      setMode("done");
+    } else {
+      sessionId.current += 1;
+      setMode("idle");
+    }
   }, []);
 
   const clear = useCallback(() => {
+    inputRequest.current += 1;
     begin("idle", null);
   }, [begin]);
 
   const elapsed = useCallback(() => (session.current ? session.current.elapsed() : null), []);
 
-  useEffect(() => () => session.current?.stop(), []);
+  useEffect(() => () => {
+    inputRequest.current += 1;
+    sessionId.current += 1;
+    session.current?.stop();
+  }, []);
 
   return { mode, source, result, history, error, playSample, playFile, record, stop, clear, elapsed };
 }
