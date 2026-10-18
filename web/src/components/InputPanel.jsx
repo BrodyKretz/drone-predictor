@@ -36,12 +36,21 @@ export default function InputPanel({ session, known, onKnownChange, samples }) {
     if (file) playFile(file);
     event.target.value = "";
   };
-  const onDrop = (event) => {
-    event.preventDefault();
-    setDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) playFile(file);
-  };
+  useEffect(() => {
+    const onDragOver = (event) => event.preventDefault();
+    const onDrop = (event) => {
+      event.preventDefault();
+      setDragging(false);
+      const file = event.dataTransfer?.files?.[0];
+      if (file) playFile(file);
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [playFile]);
   const actions = (
     <>
       <button type="button" className={`btn ${mode === "idle" ? "btn--primary" : ""}`} onClick={() => fileInput.current?.click()}>
@@ -60,8 +69,7 @@ export default function InputPanel({ session, known, onKnownChange, samples }) {
         <input ref={fileInput} type="file" accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac" hidden onChange={onFile} />
         {mode === "idle" ? (
           <div className={`drop ${dragging ? "over" : ""}`}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)} onDrop={onDrop}>
+            onDragOver={() => setDragging(true)} onDragLeave={() => setDragging(false)}>
             <Icon name="wave" className="big-icon" />
             <h2>Drop a drone recording here</h2>
             <p>WAV, MP3 or OGG. Or record it live from your microphone.</p>
