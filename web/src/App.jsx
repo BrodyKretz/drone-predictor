@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { health } from "./api.js";
-import { PanelTab, TopBar } from "./components/chrome.jsx";
+import { health, reference } from "./api.js";
+import EstimatesPanel from "./components/EstimatesPanel.jsx";
+import Identification from "./components/Identification.jsx";
 import InputPanel from "./components/InputPanel.jsx";
+import { TopBar } from "./components/chrome.jsx";
 import { useLiveSession } from "./lib/useLiveSession.js";
 
 const SAMPLES = [
@@ -14,12 +16,13 @@ const NO_KNOWN = { blade_count: "", prop_diameter_inch: "", num_motors: "" };
 
 export default function App() {
   const [backendUp, setBackendUp] = useState(null);
+  const [ref, setRef] = useState(null);
   const [known, setKnown] = useState(NO_KNOWN);
   const session = useLiveSession(known);
-  const top = session.result?.classes[0];
 
   useEffect(() => {
     health().then(() => setBackendUp(true)).catch(() => setBackendUp(false));
+    reference().then(setRef).catch(() => setRef(null));
   }, []);
 
   return (
@@ -29,12 +32,9 @@ export default function App() {
         <div className="col">
           <InputPanel session={session} known={known} samples={SAMPLES}
             onKnownChange={(key, value) => setKnown((k) => ({ ...k, [key]: value }))} />
-          <section className="panel panel--grow">
-            <PanelTab icon="target" title="What it is" />
-            <div className="body">{top ? `${top.name} ${Math.round(top.probability * 100)}%` : "Waiting for audio"}</div>
-          </section>
+          <Identification result={session.result} descriptions={ref?.classes} />
         </div>
-        <section className="panel"><PanelTab icon="list" title="Live estimates" /></section>
+        <EstimatesPanel result={session.result} history={session.history} bands={ref?.bands} known={known} />
       </main>
     </div>
   );
