@@ -75,6 +75,15 @@ export function displayUnit(key, unit) {
   return DISPLAY[key] ? DISPLAY[key].unit : (unit || "").replace("^2", "²");
 }
 
+// rounding 0.9988 to "100%" or 0.0012 to "0%" would claim certainty; only an exact 0 (a class the facts ruled out) prints as 0%
+export function fmtPercent(p) {
+  if (!Number.isFinite(p) || p < 0 || p > 1) return "—";
+  if (p === 0) return "0%";
+  if (p < 0.005) return "<1%";
+  if (p >= 0.995) return ">99%";
+  return `${Math.round(p * 100)}%`;
+}
+
 export function confidenceWord(p) {
   if (p >= 0.8) return "Confident";
   if (p >= 0.6) return "Likely";

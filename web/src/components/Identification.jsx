@@ -1,4 +1,4 @@
-import { confidenceWord } from "../lib/format.js";
+import { confidenceWord, fmtPercent } from "../lib/format.js";
 import { PanelTab } from "./chrome.jsx";
 
 const CLASS_NAMES = {
@@ -31,7 +31,7 @@ function whyLines(result) {
       <>
         Blades per prop:{" "}
         {result.blades.map((b, i) => (
-          <span key={b.blades}>{i ? " or " : ""}<b>{b.blades}</b> ({Math.round(b.probability * 100)}%)</span>
+          <span key={b.blades}>{i ? " or " : ""}<b>{b.blades}</b> ({fmtPercent(b.probability)})</span>
         ))}
         . Not given, so both are considered.
       </>,
@@ -40,13 +40,17 @@ function whyLines(result) {
   return lines;
 }
 
-function Guess({ result, descriptions }) {
+function Guess({ result, descriptions, known }) {
   const top = result.classes[0];
   const ok = result.status === "ok";
   const [specialName, specialSub] = ok ? [] : SPECIAL[result.status](result);
   const warnings = [...result.notes];
   if (ok && top.probability < 0.6) {
-    warnings.push("Several classes sound alike from audio alone. Telling it the prop size (above) can narrow it down.");
+    warnings.push(
+      known.prop_diameter_inch
+        ? "Several classes overlap even with the prop size you gave; the guess can't narrow further from audio."
+        : "Several classes sound alike from audio alone. Telling it the prop size (above) can narrow it down.",
+    );
   }
   return (
     <>
@@ -54,7 +58,7 @@ function Guess({ result, descriptions }) {
         {ok ? (
           <>
             <span className="guess-name">{displayName(top.name)}</span>
-            <span className="guess-p">{Math.round(top.probability * 100)}%</span>
+            <span className="guess-p">{fmtPercent(top.probability)}</span>
           </>
         ) : (
           <span className="guess-name dim">{specialName}</span>
@@ -71,7 +75,7 @@ function Guess({ result, descriptions }) {
             <div className="bar-row" key={c.name}>
               <span className={`name ${isTop ? "top" : ""}`}>{displayName(c.name)}</span>
               <div className={`bar ${isTop ? "top" : ""}`}><i style={{ width: `${(c.probability * 100).toFixed(1)}%` }} /></div>
-              <span className="pct">{Math.round(c.probability * 100)}%</span>
+              <span className="pct">{fmtPercent(c.probability)}</span>
             </div>
           );
         })}
@@ -84,14 +88,14 @@ function Guess({ result, descriptions }) {
   );
 }
 
-export default function Identification({ result, descriptions }) {
+export default function Identification({ result, descriptions, known }) {
   return (
     <section className="panel panel--grow">
       <PanelTab icon="target" title="What it is" />
       <div className="body body--scroll">
         <div className="eyebrow">Best guess</div>
         {result ? (
-          <Guess result={result} descriptions={descriptions} />
+          <Guess result={result} descriptions={descriptions} known={known} />
         ) : (
           <>
             <div className="guess"><span className="guess-name dim">Waiting for audio</span></div>

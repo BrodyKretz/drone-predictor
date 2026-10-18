@@ -17,12 +17,13 @@ const NO_KNOWN = { blade_count: "", prop_diameter_inch: "", num_motors: "" };
 export default function App() {
   const [backendUp, setBackendUp] = useState(null);
   const [ref, setRef] = useState(null);
+  const [refError, setRefError] = useState(false);
   const [known, setKnown] = useState(NO_KNOWN);
   const session = useLiveSession(known);
 
   useEffect(() => {
     health().then(() => setBackendUp(true)).catch(() => setBackendUp(false));
-    reference().then(setRef).catch(() => setRef(null));
+    reference().then(setRef).catch(() => setRefError(true));
   }, []);
 
   return (
@@ -32,9 +33,10 @@ export default function App() {
         <div className="col">
           <InputPanel session={session} known={known} samples={SAMPLES}
             onKnownChange={(key, value) => setKnown((k) => ({ ...k, [key]: value }))} />
-          <Identification result={session.result} descriptions={ref?.classes} />
+          <Identification result={session.result} descriptions={ref?.classes} known={known} />
         </div>
-        <EstimatesPanel result={session.result} history={session.history} bands={ref?.bands} known={known} />
+        <EstimatesPanel result={session.result} history={session.history} bands={ref?.bands} known={known}
+          referenceFailed={refError} />
       </main>
     </div>
   );

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { confidenceWord, displayFactor, displayUnit, fmt, fmtK, fmtRange } from "./format.js";
+import { confidenceWord, displayFactor, displayUnit, fmt, fmtK, fmtPercent, fmtRange } from "./format.js";
 
 test("fmt picks precision by magnitude", () => {
   assert.equal(fmt(0.6123), "0.61");
@@ -81,4 +81,27 @@ test("confidence words follow the probability bands", () => {
   assert.equal(confidenceWord(0.65), "Likely");
   assert.equal(confidenceWord(0.54), "Leaning");
   assert.equal(confidenceWord(0.3), "Unsure");
+});
+
+test("fmtPercent never shows a calibrated probability as 100%", () => {
+  assert.equal(fmtPercent(0.9988), ">99%");
+  assert.equal(fmtPercent(1), ">99%");
+  assert.equal(fmtPercent(0.0012), "<1%");
+  assert.equal(fmtPercent(0), "0%");
+  assert.equal(fmtPercent(0.54), "54%");
+});
+
+test("fmtPercent switches to the open-ended labels exactly at 0.5% and 99.5%", () => {
+  assert.equal(fmtPercent(0.995), ">99%");
+  assert.equal(fmtPercent(0.9949), "99%");
+  assert.equal(fmtPercent(0.005), "1%");
+  assert.equal(fmtPercent(0.0049), "<1%");
+});
+
+test("fmtPercent leaves values that are not probabilities as dashes", () => {
+  assert.equal(fmtPercent(NaN), "—");
+  assert.equal(fmtPercent(null), "—");
+  assert.equal(fmtPercent(undefined), "—");
+  assert.equal(fmtPercent(-0.1), "—");
+  assert.equal(fmtPercent(1.2), "—");
 });
