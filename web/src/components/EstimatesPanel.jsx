@@ -33,6 +33,7 @@ function Bar({ left, width, wide, ticks }) {
 function RpmRow({ label, summary, f0, blades, pos, history }) {
   const alts = [...blades].sort((a, b) => a.blades - b.blades).map((b) => ({ blades: b.blades, rpm: (f0 * 60) / b.blades }));
   const left = pos(summary.interval_low);
+  const bladeText = `${alts.map((a) => a.blades).join("- or ")}-blade`;
   return (
     <div className="est">
       <div className="est-top">
@@ -41,7 +42,10 @@ function RpmRow({ label, summary, f0, blades, pos, history }) {
       </div>
       <Bar left={left} width={Math.max(pos(summary.interval_high) - left, 1.2)} wide={false} ticks={alts.map((a) => pos(a.rpm))} />
       <div className="est-foot">
-        <span className="left">{alts.map((a) => `${a.blades}-blade`).join(" or ")} props · count not given</span>
+        <span className="left stack">
+          <span>{`90% ${fmtRange(summary.interval_low, summary.interval_high)}`}</span>{" "}
+          <span>{`${bladeText} props, count not given`}</span>
+        </span>
         <Sparkline points={history} factor={1} />
       </div>
     </div>
@@ -84,13 +88,23 @@ function EstimateRow({ varKey, label, summary, band, history, result, given }) {
   );
 }
 
-export default function EstimatesPanel({ result, history, bands, known }) {
+function Placeholder({ failed }) {
+  return failed ? (
+    <div className="placeholder placeholder--error">
+      Couldn't load the display scale from the analysis server. Restart augur serve and reload.
+    </div>
+  ) : (
+    <div className="placeholder">Estimates appear here and update as audio comes in.</div>
+  );
+}
+
+export default function EstimatesPanel({ result, history, bands, known, referenceFailed }) {
   return (
     <section className="panel">
       <PanelTab icon="list" title="Live estimates" />
       <div className="body--scroll">
-        {!result || !bands ? (
-          <div className="placeholder">Estimates appear here and update as audio comes in.</div>
+        {referenceFailed || !result || !bands ? (
+          <Placeholder failed={referenceFailed} />
         ) : (
           <>
             {ESTIMATES.map(([key, label]) => (
