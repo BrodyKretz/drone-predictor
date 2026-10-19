@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { resumeAudio } from "../lib/audioSession.js";
 import { Icon, PanelTab } from "./chrome.jsx";
 import Spectrum from "./Spectrum.jsx";
 
@@ -36,6 +37,11 @@ export default function InputPanel({ session, known, onKnownChange, samples }) {
     if (file) playFile(file);
     event.target.value = "";
   };
+  // WebKit only unlocks audio inside the click itself; the picker's change event comes too late
+  const chooseFile = () => {
+    resumeAudio();
+    fileInput.current?.click();
+  };
   useEffect(() => {
     const onDragOver = (event) => event.preventDefault();
     const onDrop = (event) => {
@@ -53,7 +59,7 @@ export default function InputPanel({ session, known, onKnownChange, samples }) {
   }, [playFile]);
   const actions = (
     <>
-      <button type="button" className={`btn ${mode === "idle" ? "btn--primary" : ""}`} onClick={() => fileInput.current?.click()}>
+      <button type="button" className={`btn ${mode === "idle" ? "btn--primary" : ""}`} onClick={chooseFile}>
         <Icon name="upload" />Choose file
       </button>
       <button type="button" className="btn btn--rec" onClick={record}>
