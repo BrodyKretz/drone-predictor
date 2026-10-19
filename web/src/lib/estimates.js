@@ -1,6 +1,30 @@
 import { displayFactor, displayUnit, fmt, fmtK, fmtRange } from "./format.js";
 
 const MIN_LIKELY_BLADE_PROBABILITY = 0.01;
+const ESTIMATE_ROWS = [
+  ["mass_kg", "Mass"],
+  ["rpm", "Rotor speed"],
+  ["electrical_power_w", "Hover power"],
+  ["endurance_s", "Hover endurance"],
+  ["battery_wh", "Battery"],
+  ["total_thrust_n", "Total thrust"],
+  ["disk_loading_n_m2", "Disk loading"],
+  ["prop_diameter_inch", "Prop size"],
+  ["num_motors", "Motors"],
+  ["thrust_to_weight", "Thrust-to-weight"],
+];
+// off hover the backend computes power and endurance at the measured rpm, which isn't the hover rpm
+const NOT_HOVERING_LABELS = { electrical_power_w: "Power at this rpm", endurance_s: "Endurance at this power" };
+
+export function estimateRows(status) {
+  if (typeof status !== "string" || status === "") {
+    throw new TypeError(`estimateRows: status must be a non-empty string, got ${status}`);
+  }
+  return ESTIMATE_ROWS.map(([varKey, label]) => ({
+    varKey,
+    label: (status === "not_hovering" && NOT_HOVERING_LABELS[varKey]) || label,
+  }));
+}
 
 export function likelyBlades(blades) {
   if (!Array.isArray(blades)) {
