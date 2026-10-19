@@ -40,16 +40,16 @@ function whyLines(result) {
   return lines;
 }
 
-function Guess({ result, descriptions, known }) {
+function Guess({ result, descriptions, facts }) {
   const top = result.classes[0];
   const ok = result.status === "ok";
   const [specialName, specialSub] = ok ? [] : SPECIAL[result.status](result);
   const warnings = [...result.notes];
   if (ok && top.probability < 0.6) {
     warnings.push(
-      known.prop_diameter_inch
+      facts.prop_diameter_inch
         ? "Several classes overlap even with the prop size you gave; the guess can't narrow further from audio."
-        : "Several classes sound alike from audio alone. Telling it the prop size (above) can narrow it down.",
+        : "Several classes still fit these inputs. Telling it the prop size (above) can narrow it down.",
     );
   }
   return (
@@ -88,14 +88,14 @@ function Guess({ result, descriptions, known }) {
   );
 }
 
-export default function Identification({ result, descriptions, known }) {
+export default function Identification({ result, descriptions, facts }) {
   return (
     <section className="panel panel--grow">
       <PanelTab icon="target" title="What it is" />
       <div className="body body--scroll">
         <div className="eyebrow">Best guess</div>
         {result ? (
-          <Guess result={result} descriptions={descriptions} known={known} />
+          <Guess result={result} descriptions={descriptions} facts={facts} />
         ) : (
           <>
             <div className="guess"><span className="guess-name dim">Waiting for audio</span></div>

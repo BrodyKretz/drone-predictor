@@ -33,9 +33,9 @@ export default function App() {
         <div className="col">
           <InputPanel session={session} known={known} samples={SAMPLES}
             onKnownChange={(key, value) => setKnown((k) => ({ ...k, [key]: value }))} />
-          <Identification result={session.result} descriptions={ref?.classes} known={known} />
+          <Identification result={session.result} descriptions={ref?.classes} facts={session.resultFacts} />
         </div>
-        <EstimatesPanel result={session.result} history={session.history} bands={ref?.bands} known={known}
+        <EstimatesPanel result={session.result} history={session.history} bands={ref?.bands} facts={session.resultFacts}
           referenceFailed={refError} />
       </main>
     </div>
