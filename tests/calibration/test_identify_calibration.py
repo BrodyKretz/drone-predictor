@@ -1,7 +1,8 @@
 """Simulator round-trip for the class guess (rule 2): drones drawn from each
 class's own priors -> hover audio -> identify. A Bayes-consistent posterior beats
-chance and its stated confidence matches its hit rate. Measured during design
-(48 drones): accuracy 0.54 vs mean top probability 0.50; chance is 0.25."""
+chance, its stated confidence matches its hit rate, and its mass interval covers
+the truth. Measured during design (48 drones): accuracy 0.54 vs mean top
+probability 0.50 (chance is 0.25); mass 90% coverage 0.94."""
 
 import numpy as np
 
@@ -38,7 +39,7 @@ def _drones(rng):
 
 
 def test_class_guess_beats_chance_and_is_calibrated():
-    hits, top_p = [], []
+    hits, top_p, mass_covered = [], [], []
     for i, (name, spec, rpm) in enumerate(_drones(np.random.default_rng(42))):
         sig, sr = synth_waveform(spec, FlightCondition(rpm=rpm, state="hover"), duration_s=2.0,
                                  snr_db=25.0, rng=np.random.default_rng(i))
@@ -46,6 +47,10 @@ def test_class_guess_beats_chance_and_is_calibrated():
         assert report.status == "ok"
         hits.append(report.classes[0].name == name)
         top_p.append(report.classes[0].probability)
+        mass = report.variables["mass_kg"]
+        mass_covered.append(mass.interval_low <= spec.mass_kg <= mass.interval_high)
     accuracy, confidence = float(np.mean(hits)), float(np.mean(top_p))
+    coverage = float(np.mean(mass_covered))
     assert accuracy >= 0.40, f"top-1 accuracy {accuracy:.2f} (chance 0.25)"
     assert abs(accuracy - confidence) <= 0.15, f"accuracy {accuracy:.2f} vs confidence {confidence:.2f}"
+    assert coverage >= 0.80, f"mass 90% interval covers the true mass for {coverage:.2f} of drones"
