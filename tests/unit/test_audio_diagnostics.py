@@ -96,6 +96,35 @@ def test_build_acoustics_without_tone():
     assert ac.spectrum_freq_hz[-1] <= rpm.DETECTION_FMAX_HZ
 
 
+@pytest.mark.parametrize("fill", [0.0, np.nan], ids=["digital-silence", "nan-samples"])
+def test_silent_or_corrupt_audio_draws_a_flat_spectrum_at_the_floor(fill):
+    samples = np.full(88200, fill)
+    freqs, spec_db = spectral.average_spectrum(samples, 44100)
+    ac = diagnostics.build_acoustics(freqs, spec_db, 0.0, np.array([]), 0.0,
+                                     hover.assess_flight_state(samples, 44100))
+    assert all(np.isfinite(ac.spectrum_db))
+    assert set(ac.spectrum_db) == {diagnostics.SPECTRUM_DB_FLOOR}
+
+
+@pytest.mark.parametrize("bad_db", [np.nan, np.inf, -np.inf])
+def test_max_pool_never_returns_a_non_finite_point(bad_db):
+    freqs = np.linspace(0.0, 1000.0, 101)
+    spec_db = -np.linspace(0.0, 50.0, 101)
+    spec_db[40] = bad_db
+    _, d = diagnostics.max_pool_spectrum(freqs, spec_db, f_max_hz=1000.0)
+    assert all(np.isfinite(d))
+
+
+def test_quiet_audio_keeps_its_peak_relative_shape():
+    tone = np.sin(2 * np.pi * 440.0 * np.arange(88200) / 44100)
+    loud = spectral.average_spectrum(tone, 44100)
+    quiet = spectral.average_spectrum(10 ** (-90 / 20) * tone, 44100)
+    _, loud_db = diagnostics.max_pool_spectrum(*loud, f_max_hz=5000.0)
+    _, quiet_db = diagnostics.max_pool_spectrum(*quiet, f_max_hz=5000.0)
+    assert max(quiet_db) == 0.0
+    assert quiet_db == pytest.approx(loud_db, abs=0.01)
+
+
 def test_comb_tolerance_rejects_fewer_than_two_bins():
     with pytest.raises(ValueError, match="bins"):
         rpm.comb_tolerance_hz(np.array([0.0]))
