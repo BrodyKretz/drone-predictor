@@ -33,7 +33,7 @@ wide — the system does not invent a number to fill the gap.
 ## Status
 
 **The sound + verbal → calibrated-distributions pipeline works end to end**
-(119 tests). Image, video, and calibration logic are implemented and tested
+(225 tests). Image, video, and calibration logic are implemented and tested
 against synthetic data and fake clients; what remains is external — real
 footage, one live VLM run, and the golden-set measurements. See
 **[`PLAN.md`](PLAN.md)** for live phase status and next steps, and
@@ -48,9 +48,9 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/pip install -e ".[serve]" && ./.venv/bin/augur serve   # HTTP API on :8000
 ```
 
-A web UI (Vite + React) lives in [`web/`](web/) — upload audio + a verbal spec and
-see the distributions as interval bars with confidence colors and per-input
-attribution. Run `augur serve`, then `npm install && npm run dev` in `web/`.
+A web UI (Vite + React) lives in [`web/`](web/): drop a recording, pick a sample or
+record from the mic, and watch the drone-class guess and the interval estimates
+update live. Run `augur serve`, then `npm install && npm run dev` in `web/`.
 
 ## Prop database (optional, local-only)
 
@@ -72,7 +72,7 @@ Provenance and citation live in [`data/public/SOURCES.md`](data/public/SOURCES.m
 | phase | status |
 |---|---|
 | 0 Scaffold · 1 Simulator · 2 Audio→RPM · 3 Physics+verbal · 4 Fusion | ✅ done + tested |
-| CLI · HTTP API (`/predict`, `/health`) · property-based round-trip suite | ✅ done + tested |
+| CLI · HTTP API (`/predict`, `/identify`, `/reference`, `/health`) · property-based round-trip suite | ✅ done + tested |
 | 5 Image (geometry + VLM extraction done; needs one real API run) | 🟡 near-complete |
 | 6 Video (tracking + maneuver seg + coast-down mass done; needs real footage) | 🟡 near-complete |
 | 7 Calibration (conformal + eval harness done; needs golden set for fit + metric table) | 🟡 partial |
