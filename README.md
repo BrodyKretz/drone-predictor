@@ -33,7 +33,7 @@ wide — the system does not invent a number to fill the gap.
 ## Status
 
 **The sound + verbal → calibrated-distributions pipeline works end to end**
-(225 tests). Image, video, and calibration logic are implemented and tested
+(235 tests). Image, video, and calibration logic are implemented and tested
 against synthetic data and fake clients; what remains is external — real
 footage, one live VLM run, and the golden-set measurements. See
 **[`PLAN.md`](PLAN.md)** for live phase status and next steps, and

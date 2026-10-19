@@ -3,7 +3,7 @@
 Living status doc. Full spec: [`docs/SPEC.md`](docs/SPEC.md). Build agreements:
 spec §0. **Update the status column whenever a phase advances.**
 
-_Last updated: 2026-10-18_
+_Last updated: 2026-10-19_
 
 ## Where this stands right now
 
@@ -16,14 +16,14 @@ eval harness on synthetic reports) — not stubs. The UIUC prop data is download
 and ingested (250 props → `config/prop_db.parquet`) and the fusion posterior now
 draws measured C_T/C_P when the verbal spec asserts a prop diameter. The
 remaining blockers are purely external: golden-set data / API key / hardware
-(see "Blocked on you"). 225 tests pass, plus 33 web (node:test) tests.
+(see "Blocked on you"). 235 tests pass, plus 38 web (node:test) tests.
 
 Run it:
 ```bash
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q          # 225 tests
+./.venv/bin/pytest tests/ -q          # 235 tests
 ```
 
 The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
@@ -173,7 +173,16 @@ honest interpretation of the "confidence ladder."
    blade marginalization there.
 6. The class prop bands overlap: a given 15″ prop reads cinematic over survey because
    cinematic's 6–15″ band gives it about twice the likelihood of survey's 13–30″. Revisit
-   the `classes.yaml` bands against real specs.
+   the `classes.yaml` bands against real specs. The `unknown` class's 0.2–25 kg mass band
+   also doesn't cover military's 1–30 kg.
+7. `/predict` still treats an unknown flight state as hover for sum(T) = m·g (rule 6);
+   `/identify`'s prior-width runs don't (`assume_hover_when_unknown=False`). Gate `/predict`
+   on detected hover too.
+8. The simulated survey sample uses a synthetic c_t of 0.12 (the calibration drones draw
+   theirs from the 0.08–0.14 fallback band), but with the local prop DB the posterior uses
+   measured C_T, which is lower for 15″ props (0.067–0.108), so the survey sample's mass
+   interval misses its true 3.5 kg (true-prop mass coverage over the 48 calibration drones
+   0.75 with the DB vs 0.90 without). Align the simulator's c_t with the DB.
 
 ## Not yet built
 
