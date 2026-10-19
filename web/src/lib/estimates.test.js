@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { estimateDisplay } from "./estimates.js";
+import { estimateDisplay, likelyBlades } from "./estimates.js";
 
 const summary = (overrides = {}) => ({
   median: 5,
@@ -60,6 +60,44 @@ test("rpm without a tone is a wide prior row whatever the backend labels it", ()
     assert.equal(display.isWide, true);
     assert.deepEqual(display.tickValues, []);
   }
+});
+
+test("likelyBlades keeps blade counts of at least 1%, sorted by count", () => {
+  const blades = [
+    { blades: 3, probability: 0.6 },
+    { blades: 4, probability: 0.0099 },
+    { blades: 2, probability: 0.39 },
+    { blades: 6, probability: 0.0001 },
+    { blades: 5, probability: 0.01 },
+  ];
+  assert.deepEqual(likelyBlades(blades), [
+    { blades: 2, probability: 0.39 },
+    { blades: 3, probability: 0.6 },
+    { blades: 5, probability: 0.01 },
+  ]);
+  assert.deepEqual(blades.map((b) => b.blades), [3, 4, 2, 6, 5]);
+});
+
+test("likelyBlades rejects malformed blade lists", () => {
+  assert.throws(() => likelyBlades(null), TypeError);
+  assert.throws(() => likelyBlades([null]), TypeError);
+  assert.throws(() => likelyBlades([{ blades: 0, probability: 1 }]), RangeError);
+  assert.throws(() => likelyBlades([{ blades: 2, probability: NaN }]), RangeError);
+  assert.throws(() => likelyBlades([{ blades: 2, probability: 1.5 }]), RangeError);
+});
+
+test("a blade count the posterior rules out is not offered as an rpm candidate", () => {
+  const result = {
+    status: "ok",
+    blades: [{ blades: 3, probability: 0.9999 }, { blades: 2, probability: 0.0001 }],
+    acoustics: { fundamental_hz: 393 },
+  };
+  const rpm = rpmSummary({ median: 7762, interval_low: 7695, interval_high: 7829, confidence: "high" });
+  const display = estimateDisplay("rpm", rpm, result, false);
+  assert.equal(display.kind, "regular");
+  assert.equal(display.valueText, "7,762");
+  assert.equal(display.note, null);
+  assert.deepEqual(display.tickValues, [7762]);
 });
 
 test("a single blade-count candidate falls through to the regular row with a median tick", () => {

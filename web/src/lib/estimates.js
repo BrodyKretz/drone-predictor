@@ -1,5 +1,27 @@
 import { displayFactor, displayUnit, fmt, fmtK, fmtRange } from "./format.js";
 
+const MIN_LIKELY_BLADE_PROBABILITY = 0.01;
+
+export function likelyBlades(blades) {
+  if (!Array.isArray(blades)) {
+    throw new TypeError(`likelyBlades: blades must be an array, got ${blades}`);
+  }
+  for (const entry of blades) {
+    if (entry === null || typeof entry !== "object") {
+      throw new TypeError(`likelyBlades: each entry must be an object, got ${entry}`);
+    }
+    if (!Number.isInteger(entry.blades) || entry.blades < 1) {
+      throw new RangeError(`likelyBlades: blade counts must be positive integers, got ${entry.blades}`);
+    }
+    if (!Number.isFinite(entry.probability) || entry.probability < 0 || entry.probability > 1) {
+      throw new RangeError(`likelyBlades: probabilities must be in [0, 1], got ${entry.probability}`);
+    }
+  }
+  return blades
+    .filter((entry) => entry.probability >= MIN_LIKELY_BLADE_PROBABILITY)
+    .sort((a, b) => a.blades - b.blades);
+}
+
 function requireFiniteNumber(value, name) {
   if (!Number.isFinite(value)) {
     throw new TypeError(`estimateDisplay: ${name} must be a finite number, got ${value}`);
@@ -44,10 +66,8 @@ function checkInputs(varKey, summary, result, isGiven) {
   }
 }
 
-function candidatesDisplay(summary, f0, bladeOptions) {
-  const candidates = bladeOptions
-    .map(({ blades }) => ({ blades, rpm: (f0 * 60) / blades }))
-    .sort((a, b) => a.blades - b.blades);
+function candidatesDisplay(summary, f0, likely) {
+  const candidates = likely.map(({ blades }) => ({ blades, rpm: (f0 * 60) / blades }));
   return {
     kind: "candidates",
     valueText: candidates.map((c) => fmtK(c.rpm)).join(" or "),
@@ -101,14 +121,15 @@ export function estimateDisplay(varKey, summary, result, isGiven) {
   checkInputs(varKey, summary, result, isGiven);
   const f0 = result.acoustics.fundamental_hz;
   const hasTone = f0 !== null;
+  const likely = likelyBlades(result.blades);
   // an unconstrained rpm is only the prior, so two crisp candidates would claim more than the backend found
   const showsCandidates =
     varKey === "rpm" &&
     hasTone &&
-    result.blades.length > 1 &&
+    likely.length > 1 &&
     result.status !== "no_tone" &&
     summary.confidence !== "unconstrained";
   return showsCandidates
-    ? candidatesDisplay(summary, f0, result.blades)
+    ? candidatesDisplay(summary, f0, likely)
     : regularDisplay(varKey, summary, hasTone, isGiven);
 }
