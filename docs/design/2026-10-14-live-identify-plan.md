@@ -1,5 +1,7 @@
 # Live Drone Identification Implementation Plan
 
+> **Superseded during execution** (see PLAN.md and the branch history): the minimum analysis window is `MIN_WINDOW_SAMPLES = 88200` samples (≈2 s at 44.1 kHz), not 0.25 s, and the test counts grew beyond the 164 / 9 quoted here.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A one-screen web UI that takes a dropped file, a demo clip or the mic, and live-updates a big "what kind of drone is this" guess plus interval estimates, backed by a new `/identify` endpoint.
