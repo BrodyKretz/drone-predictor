@@ -12,7 +12,8 @@ and the same term is the importance weight that turns the plug-in samples into
 the posterior under (c, B). Facts the user asserts (prop size, motor count) add
 their likelihood under each class's band. Estimates are the evidence-weighted
 mixture. Valid only in hover (rule 6); otherwise only asserted facts move the
-classes off their prior.
+classes off their prior. When only a sliver of the posterior's draws land inside
+their class band, no class really fits and the estimates fall back to prior width.
 """
 
 from __future__ import annotations
@@ -36,6 +37,8 @@ MAINS_HZ = (50.0, 60.0, 100.0, 120.0)
 MAINS_TOLERANCE = 0.015
 # Noise rejection depends on how many 8192-sample STFT frames get averaged, not on seconds.
 MIN_WINDOW_SAMPLES = 88200
+# Under this posterior-weighted share of in-band mass draws, the mixture is band-edge leftovers.
+MIN_FIT_FRACTION = 0.05
 
 
 def candidate_classes(verbal: VerbalSpec | None) -> list[str]:
@@ -96,6 +99,15 @@ def _ranked_blades(weights: dict[int, float]) -> list[BladeProbability]:
     probs = {b: (w / total if total > 0 else 1.0 / len(weights)) for b, w in weights.items()}
     return sorted((BladeProbability(blades=b, probability=p) for b, p in probs.items()),
                   key=lambda x: -x.probability)
+
+
+def _barely_fits_note(verbal: VerbalSpec | None) -> str:
+    # props_per_motor defaults to 1, so "gave a fact" means a field differs from its default
+    if verbal and verbal.model_dump(exclude_defaults=True):
+        return ("The tone and the facts you gave barely fit any known class in "
+                "config/classes.yaml. Estimates are prior-width.")
+    return ("The tone barely fits any known class in hover. It may be a drone type outside "
+            "config/classes.yaml. Estimates are prior-width.")
 
 
 def _sample_counts(probabilities: list[float], n: int) -> list[int]:
@@ -169,11 +181,12 @@ def identify(samples: np.ndarray, sample_rate: int, verbal: VerbalSpec | None = 
                 inside = (m >= band["low"]) & (m <= band["high"])
                 weights = inside * (2.0 * m / r) / (band["high"] - band["low"])
                 strength = facts[c] * (60.0 / b) * float(weights.mean())
+                in_band_share = float(inside.mean())
             else:
-                weights, strength = np.ones(n), facts[c]
-            components.append((c, b, strength, weights, draws))
+                weights, strength, in_band_share = np.ones(n), facts[c], None
+            components.append((c, b, strength, weights, draws, in_band_share))
 
-    total = sum(strength for _, _, strength, _, _ in components)
+    total = sum(strength for _, _, strength, *_ in components)
     if total <= 0:
         notes.append("The tone doesn't fit any known class in hover. It may be a drone "
                      "type outside config/classes.yaml.")
@@ -181,13 +194,21 @@ def identify(samples: np.ndarray, sample_rate: int, verbal: VerbalSpec | None = 
                               blades=prior_blades,
                               variables=_prior_width_estimates(verbal, n, seed), notes=notes)
 
-    probabilities = [strength / total for _, _, strength, _, _ in components]
+    probabilities = [strength / total for _, _, strength, *_ in components]
+    if hovering:
+        fit = sum(p * share for p, (*_, share) in zip(probabilities, components, strict=True))
+        if fit < MIN_FIT_FRACTION:
+            notes.append(_barely_fits_note(verbal))
+            return IdentifyReport(**common, status="no_class_fits", classes=ruled_out,
+                                  blades=prior_blades,
+                                  variables=_prior_width_estimates(verbal, n, seed), notes=notes)
+
     counts = _sample_counts(probabilities, n)
     rng = np.random.default_rng(seed + 1)
     parts: dict[str, list[np.ndarray]] = {v: [] for v in OUTPUT_UNITS}
     class_w = dict.fromkeys(classes, 0.0)
     blade_w = dict.fromkeys(blades, 0.0)
-    for (c, b, _, weights, draws), p, k in zip(components, probabilities, counts, strict=True):
+    for (c, b, _, weights, draws, _), p, k in zip(components, probabilities, counts, strict=True):
         class_w[c] += p
         blade_w[b] += p
         if k == 0:

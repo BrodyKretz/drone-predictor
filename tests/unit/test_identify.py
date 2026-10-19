@@ -163,6 +163,25 @@ def test_tone_that_fits_no_class_says_so():
     assert not any("don't match" in note for note in report.notes)
 
 
+def test_prop_size_that_contradicts_the_tone_gets_prior_width_not_a_band_edge():
+    sig, sr = _clip()
+    report = identify(sig, sr, VerbalSpec(prop_diameter_inch=18.0), n=2000)
+    band = load_classes().get("unknown")["all_up_mass_kg"]
+    mass = report.variables["mass_kg"]
+    assert report.status == "no_class_fits"
+    assert all(c.probability == 0.0 for c in report.classes)
+    assert any("the facts you gave barely fit" in note for note in report.notes)
+    assert band["low"] <= mass.interval_low and mass.interval_high <= band["high"]
+
+
+def test_tone_that_barely_fits_without_facts_points_outside_the_known_classes(monkeypatch):
+    monkeypatch.setattr("augur.fusion.identify.MIN_FIT_FRACTION", 0.99)
+    sig, sr = _clip()
+    report = identify(sig, sr, n=2000)
+    assert report.status == "no_class_fits"
+    assert any("tone barely fits any known class in hover" in note for note in report.notes)
+
+
 def test_one_sample_still_gives_finite_estimates():
     sig, sr = _clip()
     report = identify(sig, sr, n=1)
