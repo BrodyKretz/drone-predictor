@@ -1,19 +1,6 @@
-import { estimateDisplay } from "../lib/estimates.js";
+import { estimateDisplay, estimateRows } from "../lib/estimates.js";
 import { PanelTab } from "./chrome.jsx";
 import Sparkline from "./Sparkline.jsx";
-
-const ESTIMATES = [
-  ["mass_kg", "Mass"],
-  ["rpm", "Rotor speed"],
-  ["electrical_power_w", "Hover power"],
-  ["endurance_s", "Hover endurance"],
-  ["battery_wh", "Battery"],
-  ["total_thrust_n", "Total thrust"],
-  ["disk_loading_n_m2", "Disk loading"],
-  ["prop_diameter_inch", "Prop size"],
-  ["num_motors", "Motors"],
-  ["thrust_to_weight", "Thrust-to-weight"],
-];
 
 function logPosition(band) {
   const lo = Math.log10(Math.max(band[0], 1e-9));
@@ -79,9 +66,10 @@ export default function EstimatesPanel({ result, history, bands, facts, referenc
           <Placeholder failed={referenceFailed} />
         ) : (
           <>
-            {ESTIMATES.map(([key, label]) => (
-              <EstimateRow key={key} varKey={key} label={label} summary={result.variables[key]} band={bands[key]}
-                history={history[key] || []} result={result} isGiven={facts[key] !== undefined} />
+            {estimateRows(result.status).map(({ varKey, label }) => (
+              <EstimateRow key={varKey} varKey={varKey} label={label} summary={result.variables[varKey]}
+                band={bands[varKey]} history={history[varKey] || []} result={result}
+                isGiven={facts[varKey] !== undefined} />
             ))}
             <div className="side-note">
               <div>Every value is a 90% interval: the bar spans it, the white tick is the median. Grey means the inputs barely constrain it.</div>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { estimateDisplay, likelyBlades } from "./estimates.js";
+import { estimateDisplay, estimateRows, likelyBlades } from "./estimates.js";
 
 const summary = (overrides = {}) => ({
   median: 5,
@@ -162,6 +162,26 @@ test("endurance is shown in minutes while its ticks stay in seconds", () => {
   assert.equal(display.footText, "90% 6.49–26.2");
   assert.deepEqual(display.tickValues, [806.8]);
   assert.ok(Math.abs(display.factor * 60 - 1) < 1e-9);
+});
+
+test("power and endurance rows say they are at the measured rpm when not hovering", () => {
+  const labels = (status) => Object.fromEntries(estimateRows(status).map((row) => [row.varKey, row.label]));
+  assert.equal(labels("not_hovering").electrical_power_w, "Power at this rpm");
+  assert.equal(labels("not_hovering").endurance_s, "Endurance at this power");
+  for (const status of ["ok", "no_tone", "no_class_fits"]) {
+    assert.equal(labels(status).electrical_power_w, "Hover power");
+    assert.equal(labels(status).endurance_s, "Hover endurance");
+  }
+  assert.equal(labels("not_hovering").mass_kg, "Mass");
+  assert.deepEqual(
+    estimateRows("not_hovering").map((row) => row.varKey),
+    estimateRows("ok").map((row) => row.varKey),
+  );
+});
+
+test("estimateRows rejects a missing status", () => {
+  assert.throws(() => estimateRows(undefined), TypeError);
+  assert.throws(() => estimateRows(""), TypeError);
 });
 
 test("estimateDisplay rejects malformed inputs", () => {
