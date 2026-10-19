@@ -1,4 +1,4 @@
-import { displayFactor, displayUnit, fmt, fmtK, fmtRange } from "../lib/format.js";
+import { estimateDisplay } from "../lib/estimates.js";
 import { PanelTab } from "./chrome.jsx";
 import Sparkline from "./Sparkline.jsx";
 
@@ -30,59 +30,31 @@ function Bar({ left, width, wide, ticks }) {
   );
 }
 
-function RpmRow({ label, summary, f0, blades, pos, history }) {
-  const alts = [...blades].sort((a, b) => a.blades - b.blades).map((b) => ({ blades: b.blades, rpm: (f0 * 60) / b.blades }));
-  const left = pos(summary.interval_low);
-  const bladeText = `${alts.map((a) => a.blades).join("- or ")}-blade`;
-  return (
-    <div className="est">
-      <div className="est-top">
-        <span className="est-name">{label}</span>
-        <span className="est-val">{alts.map((a) => fmtK(a.rpm)).join(" or ")}<span className="u">rpm</span></span>
-      </div>
-      <Bar left={left} width={Math.max(pos(summary.interval_high) - left, 1.2)} wide={false} ticks={alts.map((a) => pos(a.rpm))} />
-      <div className="est-foot">
-        <span className="left stack">
-          <span>{`90% ${fmtRange(summary.interval_low, summary.interval_high)}`}</span>{" "}
-          <span>{`${bladeText} props, count not given`}</span>
-        </span>
-        <Sparkline points={history} factor={1} />
-      </div>
-    </div>
-  );
-}
-
-function EstimateRow({ varKey, label, summary, band, history, result, given }) {
+function EstimateRow({ varKey, label, summary, band, history, result, isGiven }) {
   const pos = logPosition(band);
-  const f0 = result.acoustics.fundamental_hz;
-  if (varKey === "rpm" && f0 && result.blades.length > 1 && result.status !== "no_tone") {
-    return <RpmRow label={label} summary={summary} f0={f0} blades={result.blades} pos={pos} history={history} />;
-  }
-  const f = displayFactor(varKey);
-  const unit = displayUnit(varKey, summary.unit);
-  const fixed = summary.interval_low === summary.interval_high;
-  const prior = varKey === "thrust_to_weight" || (varKey === "rpm" && !f0);
-  const wide = summary.confidence === "unconstrained" || prior;
-  const isInt = varKey === "num_motors";
-  const range = isInt
-    ? `${Math.round(summary.interval_low)}–${Math.round(summary.interval_high)}`
-    : fmtRange(summary.interval_low * f, summary.interval_high * f);
-  const value = fixed ? (isInt ? Math.round(summary.median) : fmt(summary.median * f)) : wide || isInt ? range : fmt(summary.median * f);
+  const display = estimateDisplay(varKey, summary, result, isGiven);
   const left = pos(summary.interval_low);
-  const chipText = fixed ? (given ? "given" : "fixed") : varKey === "thrust_to_weight" ? "class prior" : wide ? "rough" : summary.confidence;
-  const chipTone = fixed ? "fixed" : wide ? "wide" : summary.confidence;
+  const chip = <span className={`chip chip--${display.chipTone}`}><i />{display.chipText}</span>;
   return (
     <div className="est">
       <div className="est-top">
         <span className="est-name">{label}</span>
-        <span className={`est-val ${wide && !fixed ? "wide" : ""}`}>{value}{unit && <span className="u">{unit}</span>}</span>
-      </div>
-      <Bar left={left} width={Math.max(pos(summary.interval_high) - left, 1.2)} wide={wide} ticks={wide || fixed ? [] : [pos(summary.median)]} />
-      <div className="est-foot">
-        <span className="left">
-          {fixed ? (given ? "from your input" : "set by the class guess") : `90% ${range}`} <span className={`chip chip--${chipTone}`}><i />{chipText}</span>
+        <span className={`est-val ${display.isWide && !display.isFixed ? "wide" : ""}`}>
+          {display.valueText}{display.unit && <span className="u">{display.unit}</span>}
         </span>
-        <Sparkline points={history} factor={f} />
+      </div>
+      <Bar left={left} width={Math.max(pos(summary.interval_high) - left, 1.2)} wide={display.isWide}
+        ticks={display.tickValues.map(pos)} />
+      <div className="est-foot">
+        {display.note ? (
+          <span className="left stack">
+            <span className="foot-line">{display.footText} {chip}</span>
+            <span className="foot-note">{display.note}</span>
+          </span>
+        ) : (
+          <span className="left">{display.footText} {chip}</span>
+        )}
+        <Sparkline points={history} factor={display.factor} />
       </div>
     </div>
   );
@@ -109,7 +81,7 @@ export default function EstimatesPanel({ result, history, bands, known, referenc
           <>
             {ESTIMATES.map(([key, label]) => (
               <EstimateRow key={key} varKey={key} label={label} summary={result.variables[key]} band={bands[key]}
-                history={history[key] || []} result={result} given={Boolean(known[key])} />
+                history={history[key] || []} result={result} isGiven={Boolean(known[key])} />
             ))}
             <div className="side-note">
               <div>Every value is a 90% interval: the bar spans it, the white tick is the median. Grey means the inputs barely constrain it.</div>
