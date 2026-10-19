@@ -1,9 +1,11 @@
-"""API layer: the framework-free helper always runs; the HTTP routes run only
-when the optional `serve` extra (FastAPI + an httpx-backed TestClient) is present."""
+"""API helpers: the framework-free functions behind the HTTP routes
+(`predict_from_uploads`, `identify_from_upload`, `reference_info`). They run without
+the serve extra; the middleware and the routes are tested in test_api_middleware.py
+and test_api_routes.py."""
 
-import asyncio
 import io
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -11,6 +13,8 @@ from scipy.io import wavfile
 
 from augur.api import MAX_MC_SAMPLES, identify_from_upload, predict_from_uploads, reference_info
 from augur.physics.simulator import DroneSpec, FlightCondition, synth_waveform
+
+RACING_SAMPLE = Path(__file__).resolve().parents[2] / "web" / "public" / "templates" / "racing.wav"
 
 
 def _wav_bytes(rpm: float = 12000.0, seed: int = 0) -> bytes:
@@ -62,12 +66,26 @@ def test_identify_helper_ranks_classes():
     assert report.acoustics.fundamental_hz is not None
 
 
-def test_identify_helper_accepts_stereo_float_wav():
-    rate, mono = wavfile.read(io.BytesIO(_wav_bytes()))
+def test_identify_helper_reads_stereo_float_wav_like_mono_int16():
+    mono_wav = _wav_bytes()
+    rate, mono = wavfile.read(io.BytesIO(mono_wav))
     stereo = (np.stack([mono, mono], axis=1) / 32767).astype(np.float32)
     buf = io.BytesIO()
     wavfile.write(buf, rate, stereo)
-    assert identify_from_upload(buf.getvalue(), n=2000).status == "ok"
+    from_stereo = identify_from_upload(buf.getvalue(), n=2000)
+    from_mono = identify_from_upload(mono_wav, n=2000)
+    assert from_stereo.status == from_mono.status == "ok"
+    assert from_stereo.classes == from_mono.classes
+    assert from_stereo.variables["mass_kg"] == from_mono.variables["mass_kg"]
+
+
+def test_identify_helper_applies_the_known_facts_in_the_spec():
+    report = identify_from_upload(RACING_SAMPLE.read_bytes(), json.dumps({"prop_diameter_inch": 5}),
+                                  n=2000)
+    prop = report.variables["prop_diameter_inch"]
+    assert report.classes[0].name == "racing"
+    assert report.classes[0].probability >= 0.9
+    assert prop.interval_low == prop.median == prop.interval_high == 5.0
 
 
 def test_identify_helper_rejects_non_wav():
@@ -147,209 +165,3 @@ def test_identify_helper_rejects_wav_header_with_impossible_channel_count(channe
     raw[22:24] = channels.to_bytes(2, "little")
     with pytest.raises(ValueError, match="not a valid WAV file"):
         identify_from_upload(bytes(raw), n=2000)
-
-
-# --- HTTP layer: skipped unless the serve extra is installed ----------------
-
-pytest.importorskip("fastapi", reason="serve extra not installed")
-pytest.importorskip("httpx", reason="TestClient needs httpx")
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from augur.api import RequestSizeLimitMiddleware, create_app  # noqa: E402
-
-
-@pytest.fixture
-def client():
-    return TestClient(create_app())
-
-
-def test_health(client):
-    r = client.get("/health")
-    assert r.status_code == 200
-    assert r.json()["status"] == "ok"
-
-
-def test_predict_route_audio_and_verbal(client):
-    r = client.post(
-        "/predict",
-        files={"audio": ("drone.wav", _wav_bytes(), "audio/wav")},
-        data={"verbal_json": VERBAL, "samples": "4000", "seed": "0"},
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert "rpm" in body["variables"]
-    assert "audio" in body["inputs_used"] and "verbal" in body["inputs_used"]
-
-
-def test_predict_route_verbal_file(client):
-    r = client.post(
-        "/predict",
-        files={"verbal": ("spec.json", VERBAL, "application/json")},
-        data={"samples": "2000"},
-    )
-    assert r.status_code == 200, r.text
-    assert "rpm" in r.json()["variables"]
-
-
-def test_predict_route_no_input_is_422(client):
-    r = client.post("/predict", data={"samples": "2000"})
-    assert r.status_code == 422
-
-
-def test_predict_route_bad_verbal_is_422(client):
-    r = client.post("/predict", data={"verbal_json": "{nope", "samples": "2000"})
-    assert r.status_code == 422
-
-
-def test_identify_route(client):
-    r = client.post("/identify", files={"audio": ("w.wav", _wav_bytes(), "audio/wav")},
-                    data={"samples": "2000"})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["classes"][0]["name"] in {"racing", "cinematic", "survey", "military"}
-    assert len(body["acoustics"]["spectrum_freq_hz"]) == len(body["acoustics"]["spectrum_db"])
-
-
-def test_identify_route_non_wav_is_422(client):
-    r = client.post("/identify", files={"audio": ("a.mp3", b"ID3\x04 nope", "audio/mpeg")})
-    assert r.status_code == 422
-
-
-def test_reference_route(client):
-    r = client.get("/reference")
-    assert r.status_code == 200
-    assert "mass_kg" in r.json()["bands"]
-
-
-@pytest.mark.parametrize("path", ["/identify", "/predict"])
-def test_route_truncated_wav_is_422(client, path):
-    r = client.post(path, files={"audio": ("a.wav", b"RIFF", "audio/wav")})
-    assert r.status_code == 422
-    assert "not a valid WAV file" in r.json()["detail"]
-
-
-@pytest.mark.parametrize("path", ["/identify", "/predict"])
-def test_route_sample_count_over_the_cap_is_422(client, path):
-    r = client.post(path, files={"audio": ("w.wav", _wav_bytes(), "audio/wav")},
-                    data={"samples": str(MAX_MC_SAMPLES + 1)})
-    assert r.status_code == 422
-    assert "samples must be between" in r.json()["detail"]
-
-
-@pytest.mark.parametrize("path", ["/identify", "/predict"])
-def test_route_oversized_audio_upload_is_413(client, monkeypatch, path):
-    wav = _wav_bytes()
-    monkeypatch.setattr("augur.api.MAX_UPLOAD_BYTES", len(wav) - 1)
-    r = client.post(path, files={"audio": ("w.wav", wav, "audio/wav")}, data={"samples": "2000"})
-    assert r.status_code == 413
-    assert r.json()["detail"] == "audio upload larger than 16 MiB"
-
-
-def test_identify_route_accepts_audio_at_the_upload_limit(client, monkeypatch):
-    wav = _wav_bytes()
-    monkeypatch.setattr("augur.api.MAX_UPLOAD_BYTES", len(wav))
-    r = client.post("/identify", files={"audio": ("w.wav", wav, "audio/wav")},
-                    data={"samples": "2000"})
-    assert r.status_code == 200, r.text
-
-
-def _run_middleware(inner_app, headers, messages=(), scope_type="http"):
-    sent = []
-    pending = list(messages)
-
-    async def receive():
-        return pending.pop(0)
-
-    async def send(message):
-        sent.append(message)
-
-    scope = {"type": scope_type, "headers": headers}
-    asyncio.run(RequestSizeLimitMiddleware(inner_app)(scope, receive, send))
-    return sent
-
-
-@pytest.mark.parametrize("declared_length", [b"5000", b"9" * 5000],
-                         ids=["just-over", "5000-digits"])
-def test_size_limit_rejects_declared_oversize_before_reading(monkeypatch, declared_length):
-    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
-
-    async def inner_app(scope, receive, send):
-        raise AssertionError("the app should never run")
-
-    sent = _run_middleware(inner_app, [(b"content-length", declared_length)])
-    assert sent[0]["type"] == "http.response.start"
-    assert sent[0]["status"] == 413
-
-
-@pytest.mark.parametrize("chunk_sizes, is_rejected", [([400, 400, 200], False),
-                                                      ([400, 400, 201], True)])
-def test_size_limit_counts_streamed_bytes(monkeypatch, chunk_sizes, is_rejected):
-    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
-    messages = [{"type": "http.request", "body": b"x" * size, "more_body": i < len(chunk_sizes) - 1}
-                for i, size in enumerate(chunk_sizes)]
-
-    async def draining_app(scope, receive, send):
-        while (await receive())["more_body"]:
-            pass
-
-    sent = _run_middleware(draining_app, [], messages)
-    assert [m["status"] for m in sent if m["type"] == "http.response.start"] == (
-        [413] if is_rejected else [])
-
-
-@pytest.mark.parametrize("path, field", [("/identify", "audio"), ("/predict", "audio"),
-                                         ("/predict", "verbal")])
-def test_route_request_body_over_the_limit_is_413(client, monkeypatch, path, field):
-    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
-    r = client.post(path, files={field: ("f.bin", b"x" * 2000, "application/octet-stream")},
-                    headers={"origin": "http://localhost:5173"})
-    assert r.status_code == 413
-    assert r.json()["detail"] == "request body too large"
-    assert r.headers["access-control-allow-origin"] == "*"
-
-
-def test_route_request_at_the_size_limit_is_accepted(client, monkeypatch):
-    request = client.build_request("POST", "/identify",
-                                   files={"audio": ("w.wav", _wav_bytes(), "audio/wav")},
-                                   data={"samples": "2000"})
-    request_bytes = int(request.headers["content-length"])
-    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", request_bytes - 1)
-    assert client.send(request).status_code == 413
-    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", request_bytes)
-    assert client.send(request).status_code == 200
-
-
-def test_route_chunked_body_over_the_limit_is_413(client, monkeypatch):
-    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
-
-    def chunked_upload():
-        yield b'--x\r\nContent-Disposition: form-data; name="audio"; filename="a.wav"\r\n\r\n'
-        for _ in range(20):
-            yield b"A" * 100
-
-    r = client.post("/identify", content=chunked_upload(),
-                    headers={"content-type": "multipart/form-data; boundary=x"})
-    assert r.status_code == 413
-    assert r.json()["detail"] == "request body too large"
-
-
-@pytest.mark.parametrize("content_length", ["abc", "-1", "1.5"])
-def test_route_malformed_content_length_is_400(client, content_length):
-    r = client.post("/identify", content=b"x", headers={"content-length": content_length})
-    assert r.status_code == 400
-    assert r.json()["detail"] == "invalid Content-Length"
-
-
-@pytest.mark.parametrize("scope_type", ["lifespan", "websocket"])
-def test_size_limit_only_applies_to_http(monkeypatch, scope_type):
-    monkeypatch.setattr("augur.api.MAX_REQUEST_BYTES", 1000)
-    calls = []
-
-    async def inner_app(scope, receive, send):
-        calls.append(scope["type"])
-
-    sent = _run_middleware(inner_app, [(b"content-length", b"5000")], scope_type=scope_type)
-    assert calls == [scope_type]
-    assert sent == []
-

@@ -1,8 +1,9 @@
 """HTTP API for Augur — a thin FastAPI wrapper over the prediction pipeline.
 
 Requires the optional `serve` extra (`pip install -e ".[serve]"`). The core
-logic lives in `predict_from_uploads`, which is framework-free and unit-testable
-without FastAPI installed; the FastAPI layer is just request plumbing on top.
+logic lives in `predict_from_uploads`, `identify_from_upload` and `reference_info`,
+which are framework-free and unit-testable without FastAPI installed; the FastAPI
+layer is just request plumbing on top.
 
 Run it: `augur serve` (or `uvicorn augur.api:app`).
 
