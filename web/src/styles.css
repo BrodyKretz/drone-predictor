@@ -170,6 +170,8 @@ svg { display: block; }
 .est-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
 .est-foot .left { display: flex; gap: 10px; align-items: center; white-space: nowrap; overflow: hidden; }
 .est-foot .left.stack { flex-direction: column; align-items: flex-start; gap: 1px; }
+.est-foot .foot-line { display: flex; gap: 10px; align-items: center; }
+.est-foot .foot-note { white-space: normal; }
 .spark { width: 96px; height: 20px; flex: none; }
 .spark .band { fill: rgba(169, 134, 236, .22); }
 .spark .line { fill: none; stroke: var(--accent); stroke-width: 1.5; }
