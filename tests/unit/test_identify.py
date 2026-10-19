@@ -174,10 +174,11 @@ def test_prop_size_that_contradicts_the_tone_gets_prior_width_not_a_band_edge():
     assert band["low"] <= mass.interval_low and mass.interval_high <= band["high"]
 
 
-def test_tone_that_barely_fits_without_facts_points_outside_the_known_classes(monkeypatch):
+@pytest.mark.parametrize("verbal", [None, VerbalSpec()], ids=["no-spec", "empty-spec"])
+def test_tone_that_barely_fits_without_facts_points_outside_the_known_classes(monkeypatch, verbal):
     monkeypatch.setattr("augur.fusion.identify.MIN_FIT_FRACTION", 0.99)
     sig, sr = _clip()
-    report = identify(sig, sr, n=2000)
+    report = identify(sig, sr, verbal, n=2000)
     assert report.status == "no_class_fits"
     assert any("tone barely fits any known class in hover" in note for note in report.notes)
 

@@ -16,14 +16,14 @@ eval harness on synthetic reports) — not stubs. The UIUC prop data is download
 and ingested (250 props → `config/prop_db.parquet`) and the fusion posterior now
 draws measured C_T/C_P when the verbal spec asserts a prop diameter. The
 remaining blockers are purely external: golden-set data / API key / hardware
-(see "Blocked on you"). 235 tests pass, plus 38 web (node:test) tests.
+(see "Blocked on you"). 236 tests pass, plus 38 web (node:test) tests.
 
 Run it:
 ```bash
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q          # 235 tests
+./.venv/bin/pytest tests/ -q          # 236 tests
 ```
 
 The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
