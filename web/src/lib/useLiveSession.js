@@ -7,6 +7,7 @@ import {
 const HISTORY_LENGTH = 40;
 const AUDIO_BLOCKED =
   "Your browser blocked audio until you interact with the page. Click a sample or Choose file to start.";
+const NO_FACTS = Object.freeze({});
 
 function knownSpec(known) {
   const spec = {};
@@ -26,7 +27,7 @@ function appendHistory(history, report) {
 export function useLiveSession(known) {
   const [mode, setMode] = useState("idle");
   const [source, setSource] = useState(null);
-  const [result, setResult] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
   const [history, setHistory] = useState({});
   const [error, setError] = useState(null);
   const session = useRef(null);
@@ -34,8 +35,10 @@ export function useLiveSession(known) {
   const inputRequest = useRef(0);
   const inflightSession = useRef(null);
   const pendingFinal = useRef(null);
+  const finalWindow = useRef(null);
   const knownRef = useRef(known);
   knownRef.current = known;
+  const factsKey = JSON.stringify(knownSpec(known));
 
   const analyze = useCallback(async function run(wav, id, final = false) {
     if (!wav || id !== sessionId.current) return;
@@ -44,10 +47,11 @@ export function useLiveSession(known) {
       return;
     }
     inflightSession.current = id;
+    const spec = knownSpec(knownRef.current);
     try {
-      const report = await identify(wav, knownSpec(knownRef.current));
+      const report = await identify(wav, spec);
       if (id !== sessionId.current) return;
-      setResult(report);
+      setAnalysis({ report, facts: spec ?? NO_FACTS });
       setError(null);
       setHistory((h) => appendHistory(h, report));
     } catch (err) {
@@ -66,10 +70,11 @@ export function useLiveSession(known) {
     const old = session.current;
     session.current = null;
     sessionId.current += 1;
+    finalWindow.current = null;
     old?.stop();
     setMode(nextMode);
     setSource(nextSource);
-    setResult(null);
+    setAnalysis(null);
     setHistory({});
     setError(null);
     return sessionId.current;
@@ -79,6 +84,7 @@ export function useLiveSession(known) {
     if (id !== sessionId.current) return;
     setMode("done");
     if (wav) {
+      finalWindow.current = { wav, id };
       analyze(wav, id, true);
     } else {
       const seconds = (MIN_WINDOW_SAMPLES / sampleRate).toFixed(1);
@@ -165,11 +171,30 @@ export function useLiveSession(known) {
 
   const elapsed = useCallback(() => (session.current ? session.current.elapsed() : null), []);
 
+  // a live session picks new facts up on its next tick; only a finished one needs a re-run
+  useEffect(() => {
+    const last = finalWindow.current;
+    if (last && last.id === sessionId.current) analyze(last.wav, last.id, true);
+  }, [factsKey, analyze]);
+
   useEffect(() => () => {
     inputRequest.current += 1;
     sessionId.current += 1;
     session.current?.stop();
   }, []);
 
-  return { mode, source, result, history, error, playSample, playFile, record, stop, clear, elapsed };
+  return {
+    mode,
+    source,
+    result: analysis ? analysis.report : null,
+    resultFacts: analysis ? analysis.facts : NO_FACTS,
+    history,
+    error,
+    playSample,
+    playFile,
+    record,
+    stop,
+    clear,
+    elapsed,
+  };
 }

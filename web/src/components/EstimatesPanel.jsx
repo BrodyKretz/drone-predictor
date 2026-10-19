@@ -70,7 +70,7 @@ function Placeholder({ failed }) {
   );
 }
 
-export default function EstimatesPanel({ result, history, bands, known, referenceFailed }) {
+export default function EstimatesPanel({ result, history, bands, facts, referenceFailed }) {
   return (
     <section className="panel">
       <PanelTab icon="list" title="Live estimates" />
@@ -81,7 +81,7 @@ export default function EstimatesPanel({ result, history, bands, known, referenc
           <>
             {ESTIMATES.map(([key, label]) => (
               <EstimateRow key={key} varKey={key} label={label} summary={result.variables[key]} band={bands[key]}
-                history={history[key] || []} result={result} isGiven={Boolean(known[key])} />
+                history={history[key] || []} result={result} isGiven={facts[key] !== undefined} />
             ))}
             <div className="side-note">
               <div>Every value is a 90% interval: the bar spans it, the white tick is the median. Grey means the inputs barely constrain it.</div>
