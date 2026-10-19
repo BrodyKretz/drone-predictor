@@ -3,7 +3,7 @@
 Living status doc. Full spec: [`docs/SPEC.md`](docs/SPEC.md). Build agreements:
 spec §0. **Update the status column whenever a phase advances.**
 
-_Last updated: 2026-07-07_
+_Last updated: 2026-10-18_
 
 ## Where this stands right now
 
@@ -16,14 +16,14 @@ eval harness on synthetic reports) — not stubs. The UIUC prop data is download
 and ingested (250 props → `config/prop_db.parquet`) and the fusion posterior now
 draws measured C_T/C_P when the verbal spec asserts a prop diameter. The
 remaining blockers are purely external: golden-set data / API key / hardware
-(see "Blocked on you"). 119 tests pass.
+(see "Blocked on you"). 225 tests pass, plus 33 web (node:test) tests.
 
 Run it:
 ```bash
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q          # 112 tests
+./.venv/bin/pytest tests/ -q          # 225 tests
 ```
 
 The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
@@ -93,10 +93,14 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   `/health`, dev-permissive CORS for the web UI. Core logic is a framework-free
   helper (`predict_from_uploads`) so it unit-tests without FastAPI; HTTP routes
   tested via TestClient when the serve extra is present.
-- **Web UI** (`web/`, Vite + React): audio upload + verbal-spec dropdowns + one-click
-  synthetic demo templates (racing/cinematic/survey, each recovering true RPM within
-  ~1%) → interval bars with confidence colors + per-input attribution. Build verified
-  (`npm run build`) and components server-rendered against a live API report.
+- **Live identification** (`fusion/identify.py`, `POST /identify`, `web/`): hover-physics
+  evidence per (class, blade count) from the `classes.yaml` mass/prop bands, mixed into
+  class-weighted estimates; asserted prop size / motor count add their likelihood. On 48
+  simulated drones it is right 54% of the time (chance 25%) with mean confidence 50% —
+  calibrated, but military is nearly unidentifiable from audio (its envelope overlaps
+  every class). The web UI is a single live screen (file, sample or mic → class guess +
+  interval estimates with sparklines). Frame diagonal and disk loading now carry
+  motor-count uncertainty instead of using the modal count.
 - **Real-audio validation** (`scripts/validate_real_audio.py`, `docs/REAL_AUDIO.md`):
   recover RPM from any WAV and score vs. a known true RPM. DREGON is the ideal
   real dataset (on-board audio + rotor-speed truth) but is **academic-use only —
@@ -160,6 +164,13 @@ honest interpretation of the "confidence ladder."
 2. One real VLM run to confirm the wired call (set the key, pick the model).
 3. Once golden `calib`/`test` exist: fit conformal (`eval.fit_calibrator`),
    produce reliability diagrams + the §10 table (`eval.format_metrics_table`).
+4. A drone-vs-not detector trained on real clips (DroneAudioDataset): physics alone can't
+   tell a drone from a fan or mains hum, so the live mic can false-alarm.
+5. `/predict` still assumes 2 blades when blade count isn't given; reuse identify's
+   blade marginalization there.
+6. The class prop bands overlap: a given 15″ prop reads cinematic over survey because
+   cinematic's 6–15″ band gives it about twice the likelihood of survey's 13–30″. Revisit
+   the `classes.yaml` bands against real specs.
 
 ## Not yet built
 
