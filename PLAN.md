@@ -9,7 +9,7 @@ _Last updated: 2026-10-18_
 
 A working, tested **sound + verbal → calibrated distributions** pipeline exists
 end-to-end (Phases 0–4 + the testable physics from later phases), exposed via both
-a CLI and a FastAPI endpoint, with a property-based round-trip suite over the
+a CLI and a FastAPI service, with a property-based round-trip suite over the
 physics and audio recovery. Image/video/calibration are now implemented and
 tested (VLM call via injected fake client, video tracker on synthetic frames,
 eval harness on synthetic reports) — not stubs. The UIUC prop data is downloaded
@@ -27,8 +27,9 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ```
 
 The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
-`./.venv/bin/augur serve` (POST multipart audio/verbal to `/predict`; `/health`
-for a liveness check). Without the extra the API tests skip; the rest still run.
+`./.venv/bin/augur serve` (POST multipart audio/verbal to `/predict`, one audio
+window to `/identify`; `/health` for a liveness check). Without the extra the
+API tests skip; the rest still run.
 
 ## Phase status
 
@@ -89,10 +90,12 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   guard.
 - **CLI** (`augur predict`, `augur version`, `augur serve`), report renderer,
   synthetic data gen.
-- **HTTP API** (`api.py`): FastAPI `/predict` (multipart audio + verbal) and
-  `/health`, dev-permissive CORS for the web UI. Core logic is a framework-free
-  helper (`predict_from_uploads`) so it unit-tests without FastAPI; HTTP routes
-  tested via TestClient when the serve extra is present.
+- **HTTP API** (`api.py`): FastAPI `/predict` (multipart audio + verbal), `/identify`
+  (one audio window + optional known facts), `/reference` (the no-input 99% bands + class
+  descriptions) and `/health`, dev-permissive CORS for the web UI. Core logic is in
+  framework-free helpers (`predict_from_uploads`, `identify_from_upload`,
+  `reference_info`) so it unit-tests without FastAPI; HTTP routes tested via
+  TestClient when the serve extra is present.
 - **Live identification** (`fusion/identify.py`, `POST /identify`, `web/`): hover-physics
   evidence per (class, blade count) from the `classes.yaml` mass/prop bands, mixed into
   class-weighted estimates; asserted prop size / motor count add their likelihood. On 48
