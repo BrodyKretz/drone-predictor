@@ -1,3 +1,4 @@
+import { likelyBlades } from "../lib/estimates.js";
 import { confidenceWord, fmtPercent } from "../lib/format.js";
 import { PanelTab } from "./chrome.jsx";
 
@@ -26,14 +27,22 @@ function whyLines(result) {
   if (fs.state === "hover" && fs.pitch_variation != null) {
     lines.push(<>Hovering: pitch steady (variation {(fs.pitch_variation * 100).toFixed(1)}% ≤ {(fs.steady_threshold * 100).toFixed(0)}%)</>);
   }
-  if (result.blades.length > 1) {
+  const likely = likelyBlades(result.blades);
+  if (likely.length > 1) {
     lines.push(
       <>
         Blades per prop:{" "}
-        {result.blades.map((b, i) => (
+        {likely.map((b, i) => (
           <span key={b.blades}>{i ? " or " : ""}<b>{b.blades}</b> ({fmtPercent(b.probability)})</span>
         ))}
         . Not given, so both are considered.
+      </>,
+    );
+  } else if (likely.length === 1 && result.blades.length > 1) {
+    lines.push(
+      <>
+        Blades per prop: <b>{likely[0].blades}</b> ({fmtPercent(likely[0].probability)}). Not given; the other
+        counts don't fit.
       </>,
     );
   }
