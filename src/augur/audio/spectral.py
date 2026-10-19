@@ -14,6 +14,9 @@ import numpy as np
 from scipy import signal as sps
 from scipy.io import wavfile
 
+MAGNITUDE_FLOOR = 1e-12
+SILENCE_DB = 20.0 * np.log10(MAGNITUDE_FLOOR)
+
 
 def _to_mono_float(data: np.ndarray) -> np.ndarray:
     data = np.asarray(data)
@@ -58,7 +61,7 @@ def average_spectrum(samples: np.ndarray, sample_rate: int, nperseg: int = 8192)
     """Time-averaged magnitude spectrum in dB. Returns (freqs, spectrum_db)."""
     freqs, _, mag = spectrogram(samples, sample_rate, nperseg=nperseg)
     avg = mag.mean(axis=1)
-    return freqs, 20.0 * np.log10(avg + 1e-12)
+    return freqs, 20.0 * np.log10(avg + MAGNITUDE_FLOOR)
 
 
 def dominant_freq_track(samples: np.ndarray, sample_rate: int, fmin: float = 50.0,

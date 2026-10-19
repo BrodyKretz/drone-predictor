@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 const HEIGHT = 170;
 const M = { left: 40, right: 12, top: 24, bottom: 22 };
+const FLOOR_DB = -80;
 
 function useWidth(ref) {
   const [width, setWidth] = useState(0);
@@ -37,7 +38,7 @@ function Plot({ acoustics, width }) {
   const db = acoustics.spectrum_db;
   const fmax = freqs[freqs.length - 1];
   const x = (f) => M.left + (f / fmax) * (width - M.left - M.right);
-  const y = (d) => M.top + (-d / 80) * (HEIGHT - M.top - M.bottom);
+  const y = (d) => M.top + (-(Number.isFinite(d) ? d : FLOOR_DB) / 80) * (HEIGHT - M.top - M.bottom);
   const points = freqs.map((f, i) => `${x(f).toFixed(1)},${y(db[i]).toFixed(1)}`).join(" L");
   const step = niceStep(fmax, Math.max(3, Math.floor((width - M.left - M.right) / 90)));
   const ticks = [];
