@@ -12,8 +12,9 @@ and the same term is the importance weight that turns the plug-in samples into
 the posterior under (c, B). Facts the user asserts (prop size, motor count) add
 their likelihood under each class's band. Estimates are the evidence-weighted
 mixture. Valid only in hover (rule 6); otherwise only asserted facts move the
-classes off their prior. When only a sliver of the posterior's draws land inside
-their class band, no class really fits and the estimates fall back to prior width.
+classes off their prior. When only a sliver of the plug-in draws, weighted by the
+posterior, land inside their class band, no class really fits and the estimates
+fall back to prior width.
 """
 
 from __future__ import annotations

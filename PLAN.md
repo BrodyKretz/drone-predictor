@@ -23,7 +23,7 @@ Run it:
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q          # 236 tests
+./.venv/bin/pytest tests/ -q          # 236 tests; the HTTP route tests need the serve extra + httpx
 ```
 
 The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
@@ -183,6 +183,13 @@ honest interpretation of the "confidence ladder."
    measured C_T, which is lower for 15″ props (0.067–0.108), so the survey sample's mass
    interval misses its true 3.5 kg (true-prop mass coverage over the 48 calibration drones
    0.75 with the DB vs 0.90 without). Align the simulator's c_t with the DB.
+9. Class bands have hard edges and asserted facts are trusted, so a wrong fact can still pin a
+   confident answer to a band edge that the fit gate (`MIN_FIT_FRACTION` = 0.05) doesn't
+   catch: the racing sample told "3 blades, 5″" reads Racing at 0.25–0.31 kg against a true
+   0.55 kg. The worst collapsed case sits just under the floor (F = 0.048), so a live window
+   near it can flip answers, and when the gate fires the prior-width fallback (the unknown
+   class's 0.2–25 kg prior, 90% 1.4–23.7 kg) excludes racing-size drones. Softer band edges
+   would help all three.
 
 ## Not yet built
 
