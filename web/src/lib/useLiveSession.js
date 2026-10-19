@@ -164,11 +164,6 @@ export function useLiveSession(known) {
     }
   }, []);
 
-  const clear = useCallback(() => {
-    inputRequest.current += 1;
-    begin("idle", null);
-  }, [begin]);
-
   const elapsed = useCallback(() => (session.current ? session.current.elapsed() : null), []);
 
   // a live session picks new facts up on its next tick; only a finished one needs a re-run
@@ -194,7 +189,6 @@ export function useLiveSession(known) {
     playFile,
     record,
     stop,
-    clear,
     elapsed,
   };
 }
