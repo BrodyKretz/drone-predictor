@@ -1,5 +1,5 @@
 """HTTP routes through FastAPI's TestClient. They run only when the serve extra and
-httpx (which TestClient needs) are installed; the helpers they wrap are tested in
+httpx2 (which TestClient needs) are installed; the helpers they wrap are tested in
 test_api.py without either."""
 
 import io
@@ -14,7 +14,7 @@ from augur.api import MAX_MC_SAMPLES, create_app
 from augur.physics.simulator import DroneSpec, FlightCondition, synth_waveform
 
 pytest.importorskip("fastapi", reason="serve extra not installed")
-pytest.importorskip("httpx", reason="TestClient needs httpx")
+pytest.importorskip("httpx2", reason="TestClient needs httpx2")
 
 from fastapi.testclient import TestClient  # noqa: E402
 

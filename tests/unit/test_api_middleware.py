@@ -1,5 +1,5 @@
 """The request-size middleware as a bare ASGI app. Its rejections render through
-starlette, which comes with the serve extra, so these skip without it (httpx not needed)."""
+starlette, which comes with the serve extra, so these skip without it (httpx2 not needed)."""
 
 import asyncio
 
