@@ -23,7 +23,7 @@ Run it:
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q          # 236 tests; the HTTP route tests need the serve extra + httpx
+./.venv/bin/pytest tests/ -q          # 236 tests; the HTTP route tests also need the serve extra
 ```
 
 The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
@@ -95,7 +95,7 @@ HTTP route tests skip; the helper tests still run.
   descriptions) and `/health`, dev-permissive CORS for the web UI. Core logic is in
   framework-free helpers (`predict_from_uploads`, `identify_from_upload`,
   `reference_info`) so it unit-tests without FastAPI; HTTP routes tested via
-  TestClient when the serve extra and httpx are installed.
+  TestClient when the serve extra is installed.
 - **Live identification** (`fusion/identify.py`, `POST /identify`, `web/`): hover-physics
   evidence per (class, blade count) from the `classes.yaml` mass/prop bands, mixed into
   class-weighted estimates; asserted prop size / motor count add their likelihood. On 48
