@@ -61,6 +61,13 @@ class FusionInputs:
     flight_state: FlightState = FlightState.unknown
     image_observations: list[Observation] = field(default_factory=list)
     video_observations: list[Observation] = field(default_factory=list)
+    assume_hover_when_unknown: bool = True  # the default keeps /predict's outputs unchanged
+
+    def uses_hover_balance(self) -> bool:
+        """Whether sum(T) = m*g applies: in hover, or in an unknown state when allowed."""
+        if self.flight_state == FlightState.unknown:
+            return self.assume_hover_when_unknown
+        return self.flight_state == FlightState.hover
 
     def sources_present(self) -> list[str]:
         s = []
@@ -103,7 +110,7 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
     # Draw all unit uniforms up front, in a fixed order.
     u_motor = rng.random(n)
     u_diam = rng.random(n)
-    u_blade = rng.random(n)
+    _u_blade = rng.random(n)  # unused, but dropping it would shift every later draw
     u_pitch = rng.random(n)
     u_ct = rng.random(n)  # placeholder draws to keep stream aligned with db path
     u_cp = rng.random(n)
@@ -120,7 +127,6 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
     else:
         choices = np.array(cls["num_motors"])
         num_motors = choices[np.floor(u_motor * len(choices)).astype(int)]
-    num_motors_mode = int(np.bincount(num_motors).argmax())
 
     # --- prop diameter (inches) ---
     if verbal and verbal.prop_diameter_inch:
@@ -129,10 +135,6 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
         b = cls["prop_diameter_inch"]
         diameter_in = _scale_lh(u_diam, b["low"], b["high"])
     diameter_m = diameter_in * core.INCH_TO_M
-
-    # --- blade count (unused downstream here, but drawn for stream alignment) ---
-    if not (verbal and verbal.blade_count):
-        _ = np.array([2, 3])[np.floor(u_blade * 2).astype(int)]
 
     # --- pitch (via pitch/diameter ratio prior) ---
     _pitch = _scale(u_pitch, priors.pitch_to_diameter(class_name)) * diameter_in
@@ -167,11 +169,15 @@ def _sample_and_forward(inputs: FusionInputs, n: int, priors: Priors, classes: C
     t_total = t_per * num_motors
     p_shaft = core.shaft_power_per_motor(rpm, diameter_m, c_p, rho) * num_motors
     p_elec = p_shaft / efficiency
-    disk = core.disk_loading(t_total, num_motors_mode, diameter_m)
-    frame = core.min_frame_diagonal_m(diameter_m, num_motors_mode)
+    disk = np.empty(n)
+    frame = np.empty(n)
+    for motor_count in np.unique(num_motors):
+        sel = num_motors == motor_count
+        disk[sel] = core.disk_loading(t_total[sel], int(motor_count), diameter_m[sel])
+        frame[sel] = core.min_frame_diagonal_m(diameter_m[sel], int(motor_count))
 
     # --- mass: hover force balance when in hover, else class prior ---
-    in_hover = inputs.flight_state in (FlightState.hover, FlightState.unknown)
+    in_hover = inputs.uses_hover_balance()
     b = cls["all_up_mass_kg"]
     mass_prior = _scale_lh(u_mass, b["low"], b["high"])
     if in_hover:
@@ -247,6 +253,7 @@ def _subset(inputs: FusionInputs, sources: set[str]) -> FusionInputs:
         flight_state=inputs.flight_state if "audio" in sources else FlightState.unknown,
         image_observations=inputs.image_observations if "image" in sources else [],
         video_observations=inputs.video_observations if "video" in sources else [],
+        assume_hover_when_unknown=inputs.assume_hover_when_unknown,
     )
 
 
@@ -322,7 +329,7 @@ def _assumptions(inputs: FusionInputs, priors: Priors) -> list[str]:
     eff = priors.efficiency
     ed = priors.energy_density("lipo")
     bmf = priors.battery_mass_fraction(cls)
-    used_hover = inputs.flight_state in (FlightState.hover, FlightState.unknown)
+    used_hover = inputs.uses_hover_balance()
     mass_line = (
         f"mass from hover force balance sum(T)=m*g (state={inputs.flight_state.value})"
         if used_hover else

@@ -5,12 +5,14 @@ so sum(T)=m*g), synthesized to a WAV, plus a manifest entry carrying the matchin
 verbal spec and the true RPM. The UI loads these so a visitor can try the pipeline
 without recording anything. Synthetic (our own data) — no third-party license.
 
-Usage: python scripts/make_templates.py
+Usage: python scripts/make_templates.py [--duration 8]
 """
 
 from __future__ import annotations
 
+import argparse
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -51,12 +53,21 @@ def hover_rpm(spec: DroneSpec) -> float:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Generate the web UI's demo clips.")
+    parser.add_argument("--duration", type=float, default=8.0, help="clip length in seconds")
+    args = parser.parse_args()
+    if not math.isfinite(args.duration) or args.duration < 2.0:
+        parser.error(
+            "--duration must be a finite number of seconds, at least 2.0 "
+            "(the live analysis needs 88200 samples)"
+        )
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     manifest = []
     for tid, label, kw in TEMPLATES:
         spec = DroneSpec(**kw)
         cond = FlightCondition(rpm=hover_rpm(spec), state="hover")
-        sig, sr = synth_waveform(spec, cond, duration_s=2.0, snr_db=25.0,
+        sig, sr = synth_waveform(spec, cond, duration_s=args.duration, snr_db=25.0,
                                  rng=np.random.default_rng(0))
         pcm = np.int16(sig / np.max(np.abs(sig)) * 32767)
         wavfile.write(OUT_DIR / f"{tid}.wav", sr, pcm)

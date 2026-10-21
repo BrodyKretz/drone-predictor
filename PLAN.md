@@ -3,32 +3,33 @@
 Living status doc. Full spec: [`docs/SPEC.md`](docs/SPEC.md). Build agreements:
 spec §0. **Update the status column whenever a phase advances.**
 
-_Last updated: 2026-07-07_
+_Last updated: 2026-10-19_
 
 ## Where this stands right now
 
 A working, tested **sound + verbal → calibrated distributions** pipeline exists
 end-to-end (Phases 0–4 + the testable physics from later phases), exposed via both
-a CLI and a FastAPI endpoint, with a property-based round-trip suite over the
+a CLI and a FastAPI service, with a property-based round-trip suite over the
 physics and audio recovery. Image/video/calibration are now implemented and
 tested (VLM call via injected fake client, video tracker on synthetic frames,
 eval harness on synthetic reports) — not stubs. The UIUC prop data is downloaded
 and ingested (250 props → `config/prop_db.parquet`) and the fusion posterior now
 draws measured C_T/C_P when the verbal spec asserts a prop diameter. The
 remaining blockers are purely external: golden-set data / API key / hardware
-(see "Blocked on you"). 119 tests pass.
+(see "Blocked on you"). 236 tests pass, plus 38 web (node:test) tests.
 
 Run it:
 ```bash
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python scripts/make_demo_sample.py
 ./.venv/bin/augur predict --audio data/demo/drone.wav --verbal data/demo/spec.json
-./.venv/bin/pytest tests/ -q          # 112 tests
+./.venv/bin/pytest tests/ -q          # 236 tests; the HTTP route tests also need the serve extra
 ```
 
 The HTTP API needs the serve extra: `./.venv/bin/pip install -e ".[serve]"`, then
-`./.venv/bin/augur serve` (POST multipart audio/verbal to `/predict`; `/health`
-for a liveness check). Without the extra the API tests skip; the rest still run.
+`./.venv/bin/augur serve` (POST multipart audio/verbal to `/predict`, one audio
+window to `/identify`; `/health` for a liveness check). Without the extra the
+HTTP route tests skip; the helper tests still run.
 
 ## Phase status
 
@@ -89,14 +90,20 @@ for a liveness check). Without the extra the API tests skip; the rest still run.
   guard.
 - **CLI** (`augur predict`, `augur version`, `augur serve`), report renderer,
   synthetic data gen.
-- **HTTP API** (`api.py`): FastAPI `/predict` (multipart audio + verbal) and
-  `/health`, dev-permissive CORS for the web UI. Core logic is a framework-free
-  helper (`predict_from_uploads`) so it unit-tests without FastAPI; HTTP routes
-  tested via TestClient when the serve extra is present.
-- **Web UI** (`web/`, Vite + React): audio upload + verbal-spec dropdowns + one-click
-  synthetic demo templates (racing/cinematic/survey, each recovering true RPM within
-  ~1%) → interval bars with confidence colors + per-input attribution. Build verified
-  (`npm run build`) and components server-rendered against a live API report.
+- **HTTP API** (`api.py`): FastAPI `/predict` (multipart audio + verbal), `/identify`
+  (one audio window + optional known facts), `/reference` (the no-input 99% bands + class
+  descriptions) and `/health`, dev-permissive CORS for the web UI. Core logic is in
+  framework-free helpers (`predict_from_uploads`, `identify_from_upload`,
+  `reference_info`) so it unit-tests without FastAPI; HTTP routes tested via
+  TestClient when the serve extra is installed.
+- **Live identification** (`fusion/identify.py`, `POST /identify`, `web/`): hover-physics
+  evidence per (class, blade count) from the `classes.yaml` mass/prop bands, mixed into
+  class-weighted estimates; asserted prop size / motor count add their likelihood. On 48
+  simulated drones it is right 54% of the time (chance 25%) with mean confidence 50% —
+  calibrated, but military is nearly unidentifiable from audio (its envelope overlaps
+  every class). The web UI is a single live screen (file, sample or mic → class guess +
+  interval estimates with sparklines). Frame diagonal and disk loading now carry
+  motor-count uncertainty instead of using the modal count.
 - **Real-audio validation** (`scripts/validate_real_audio.py`, `docs/REAL_AUDIO.md`):
   recover RPM from any WAV and score vs. a known true RPM. DREGON is the ideal
   real dataset (on-board audio + rotor-speed truth) but is **academic-use only —
@@ -160,6 +167,29 @@ honest interpretation of the "confidence ladder."
 2. One real VLM run to confirm the wired call (set the key, pick the model).
 3. Once golden `calib`/`test` exist: fit conformal (`eval.fit_calibrator`),
    produce reliability diagrams + the §10 table (`eval.format_metrics_table`).
+4. A drone-vs-not detector trained on real clips (DroneAudioDataset): physics alone can't
+   tell a drone from a fan or mains hum, so the live mic can false-alarm.
+5. `/predict` still assumes 2 blades when blade count isn't given; reuse identify's
+   blade marginalization there.
+6. The class prop bands overlap: a given 15″ prop reads cinematic over survey because
+   cinematic's 6–15″ band gives it about twice the likelihood of survey's 13–30″. Revisit
+   the `classes.yaml` bands against real specs. The `unknown` class's 0.2–25 kg mass band
+   also doesn't cover military's 1–30 kg.
+7. `/predict` still treats an unknown flight state as hover for sum(T) = m·g (rule 6);
+   `/identify`'s prior-width runs don't (`assume_hover_when_unknown=False`). Gate `/predict`
+   on detected hover too.
+8. The simulated survey sample uses a synthetic c_t of 0.12 (the calibration drones draw
+   theirs from the 0.08–0.14 fallback band), but with the local prop DB the posterior uses
+   measured C_T, which is lower for 15″ props (0.067–0.108), so the survey sample's mass
+   interval misses its true 3.5 kg (true-prop mass coverage over the 48 calibration drones
+   0.75 with the DB vs 0.90 without). Align the simulator's c_t with the DB.
+9. Class bands have hard edges and asserted facts are trusted, so a wrong fact can still pin a
+   confident answer to a band edge that the fit gate (`MIN_FIT_FRACTION` = 0.05) doesn't
+   catch: the racing sample told "3 blades, 5″" reads Racing at 0.25–0.31 kg against a true
+   0.55 kg. The worst collapsed case sits just under the floor (F = 0.048), so a live window
+   near it can flip answers, and when the gate fires the prior-width fallback (the unknown
+   class's 0.2–25 kg prior, 90% 1.4–23.7 kg) excludes racing-size drones. Softer band edges
+   would help all three.
 
 ## Not yet built
 
