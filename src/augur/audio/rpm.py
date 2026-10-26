@@ -18,6 +18,35 @@ from scipy.signal import find_peaks
 from augur.physics import core
 from augur.types import Distribution
 
+N_HARMONICS = 6
+DETECTION_FMAX_HZ = 5000.0
+MIN_COMB_CONFIDENCE = 0.3
+
+
+def comb_tolerance_hz(freqs: np.ndarray) -> float:
+    """How far a peak may sit from h*f0 and still count as that harmonic."""
+    if freqs.size < 2:
+        raise ValueError(f"freqs needs at least 2 bins to infer the bin width, got {freqs.size}")
+    return max(3.0 * float(freqs[1] - freqs[0]), 5.0)
+
+
+def match_harmonics(fundamental: float, peaks: np.ndarray, n_harmonics: int,
+                    tol_hz: float) -> list[float | None]:
+    """For each of the first n_harmonics, the nearest peak within tol_hz, else None."""
+    if n_harmonics < 1:
+        raise ValueError(f"n_harmonics must be at least 1, got {n_harmonics}")
+    if tol_hz < 0:
+        raise ValueError(f"tol_hz must be non-negative, got {tol_hz}")
+    matched: list[float | None] = []
+    for h in range(1, n_harmonics + 1):
+        target = fundamental * h
+        if fundamental > 0 and peaks.size:
+            nearest = float(peaks[np.argmin(np.abs(peaks - target))])
+            matched.append(nearest if abs(nearest - target) <= tol_hz else None)
+        else:
+            matched.append(None)
+    return matched
+
 
 @dataclass
 class RPMEstimate:
@@ -40,16 +69,13 @@ def _comb_score(fundamental: float, peaks: np.ndarray, n_harmonics: int, tol_hz:
     """Fraction of the first n_harmonics that have a peak within tol_hz."""
     if fundamental <= 0:
         return 0.0
-    hits = 0
-    for h in range(1, n_harmonics + 1):
-        target = fundamental * h
-        if peaks.size and np.min(np.abs(peaks - target)) <= tol_hz:
-            hits += 1
-    return hits / n_harmonics
+    matched = match_harmonics(fundamental, peaks, n_harmonics, tol_hz)
+    return sum(m is not None for m in matched) / n_harmonics
 
 
 def detect_fundamental(freqs: np.ndarray, spec_db: np.ndarray, fmin: float = 50.0,
-                       fmax: float = 5000.0, n_harmonics: int = 6) -> tuple[float, float, np.ndarray]:
+                       fmax: float = DETECTION_FMAX_HZ,
+                       n_harmonics: int = N_HARMONICS) -> tuple[float, float, np.ndarray]:
     """Return (fundamental_hz, confidence, peak_freqs).
 
     Scores each detected peak as a candidate fundamental by how well an integer
@@ -60,8 +86,7 @@ def detect_fundamental(freqs: np.ndarray, spec_db: np.ndarray, fmin: float = 50.
     if peaks.size == 0:
         return 0.0, 0.0, peaks
 
-    bin_hz = float(freqs[1] - freqs[0])
-    tol_hz = max(3.0 * bin_hz, 5.0)
+    tol_hz = comb_tolerance_hz(freqs)
 
     best_f, best_score = 0.0, -1.0
     # Candidate fundamentals: each peak, and each peak divided by small integers
@@ -83,7 +108,7 @@ def detect_fundamental(freqs: np.ndarray, spec_db: np.ndarray, fmin: float = 50.
 
 
 def estimate_rpm(freqs: np.ndarray, spec_db: np.ndarray, num_blades: int = 2,
-                 fmin: float = 50.0, fmax: float = 5000.0, n_samples: int = 4000,
+                 fmin: float = 50.0, fmax: float = DETECTION_FMAX_HZ, n_samples: int = 4000,
                  rng: np.random.Generator | None = None) -> RPMEstimate:
     """Estimate RPM as a Distribution.
 
@@ -92,7 +117,7 @@ def estimate_rpm(freqs: np.ndarray, spec_db: np.ndarray, num_blades: int = 2,
     a tight RPM distribution (the spec targets <2% error here).
     """
     rng = rng or np.random.default_rng()
-    f0, conf, peaks = detect_fundamental(freqs, spec_db, fmin, fmax, n_harmonics=6)
+    f0, conf, peaks = detect_fundamental(freqs, spec_db, fmin, fmax, n_harmonics=N_HARMONICS)
 
     if f0 <= 0:
         # No tonal content found: return an uninformative wide distribution.

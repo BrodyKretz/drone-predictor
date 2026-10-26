@@ -6,24 +6,48 @@ is an optional extra for richer order-tracking later.
 
 from __future__ import annotations
 
+import io
+import struct
 from pathlib import Path
 
 import numpy as np
 from scipy import signal as sps
 from scipy.io import wavfile
 
+MAGNITUDE_FLOOR = 1e-12
+SILENCE_DB = 20.0 * np.log10(MAGNITUDE_FLOOR)
 
-def load_wav(path: str | Path) -> tuple[np.ndarray, int]:
-    """Load a WAV as mono float64 in [-1, 1]. Returns (samples, sample_rate)."""
-    sr, data = wavfile.read(str(path))
+
+def _to_mono_float(data: np.ndarray) -> np.ndarray:
     data = np.asarray(data)
     if data.ndim > 1:
         data = data.mean(axis=1)
     data = data.astype(np.float64)
     # Normalise integer PCM to [-1, 1].
-    if np.issubdtype(np.asarray(data).dtype, np.floating) and np.max(np.abs(data)) > 1.0:
+    if data.size and np.max(np.abs(data)) > 1.0:
         data = data / np.max(np.abs(data))
-    return data, int(sr)
+    return data
+
+
+def _read_wav(source: str | io.BytesIO) -> tuple[int, np.ndarray]:
+    try:
+        return wavfile.read(source)
+    except (struct.error, UnboundLocalError, ZeroDivisionError) as e:
+        # scipy lets these escape instead of raising ValueError on malformed RIFF headers
+        raise ValueError(f"not a valid WAV file: {e}") from e
+
+
+def load_wav(path: str | Path) -> tuple[np.ndarray, int]:
+    """Load a WAV as mono float64 in [-1, 1]. Returns (samples, sample_rate)."""
+    sr, data = _read_wav(str(path))
+    return _to_mono_float(data), int(sr)
+
+
+def read_wav_bytes(raw: bytes) -> tuple[np.ndarray, int]:
+    """load_wav for an in-memory WAV (an HTTP upload). Raises ValueError if the
+    bytes aren't a WAV."""
+    sr, data = _read_wav(io.BytesIO(raw))
+    return _to_mono_float(data), int(sr)
 
 
 def spectrogram(samples: np.ndarray, sample_rate: int, nperseg: int = 8192, overlap: float = 0.5):
@@ -37,7 +61,7 @@ def average_spectrum(samples: np.ndarray, sample_rate: int, nperseg: int = 8192)
     """Time-averaged magnitude spectrum in dB. Returns (freqs, spectrum_db)."""
     freqs, _, mag = spectrogram(samples, sample_rate, nperseg=nperseg)
     avg = mag.mean(axis=1)
-    return freqs, 20.0 * np.log10(avg + 1e-12)
+    return freqs, 20.0 * np.log10(avg + MAGNITUDE_FLOOR)
 
 
 def dominant_freq_track(samples: np.ndarray, sample_rate: int, fmin: float = 50.0,
